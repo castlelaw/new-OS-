@@ -7,7 +7,7 @@
 #include "threads/interrupt.h"
 #include "threads/synch.h"
 #include "threads/thread.h"
-#include "threads/list.h"
+#include <list.h>
   
 /* See [8254] for hardware details of the 8254 timer chip. */
 
@@ -27,9 +27,16 @@ static unsigned loops_per_tick;
 
 /* sleep 스레드의 리스트. 깨어날 시간이 가장 빠른 스레드가 리스트 헤드에 위치하도록 정렬 */
 static struct list sleep_list;
-/* sleep_list를 위한 비교 함수. threads/thread.h에 있는 list_less_func의 정의를 사용해야 함.
-   thread 구조체에 'wakeup_tick' 필드가 추가되어 있다고 가정. */
-static bool thread_wakeup_tick_less (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+
+/* sleep_list 정렬을 위한 비교 함수 */
+static bool
+thread_wakeup_tick_less (const struct list_elem *a,
+                         const struct list_elem *b,
+                         void *aux UNUSED) {
+    struct thread *t1 = list_entry(a, struct thread, elem);
+    struct thread *t2 = list_entry(b, struct thread, elem);
+    return t1->wakeup_tick < t2->wakeup_tick;
+}
 
 
 static intr_handler_func timer_interrupt;
@@ -111,11 +118,11 @@ timer_sleep (int64_t ticks)
 
   enum intr_level old_level = intr_disable (); // 리스트 조작을 위해 인터럽트 비활성화
   
-  // 현재 스레드의 깨어날 시간을 설정. 
-  thread_current ()->wakeup_tick = wakeup_tick; 
+  struct thread *cur = thread_current ();
+  cur->wakeup_tick = wakeup_tick;
 
   // 깨어날 틱 순서대로 sleep_list에 삽입.
-  list_insert_ordered (&sleep_list, &thread_current ()->elem, thread_wakeup_tick_less, NULL);
+  list_insert_ordered (&sleep_list, &cur->elem, thread_wakeup_tick_less, NULL);
 
   // 현재 스레드를 BLOCKED 상태로 전환.
   thread_block ();
@@ -198,11 +205,21 @@ static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
+  thread_tick ();
 
   // 잠든 스레드를 확인하고 깨움.
-  struct list_elem *e;
-  
-  thread_tick ();
+  struct list_elem *e=list_begin (&sleep_list);
+  while (e != list_end (&sleep_list)) {
+      struct thread *t = list_entry (e, struct thread, elem);
+      if (t->wakeup_tick <= ticks) {
+          // 깨울 스레드를 sleep_list에서 제거하고 깨움.
+          e = list_remove (e); // 다음 원소를 가리키도록 e 갱신
+          thread_unblock (t);
+      } else {
+          // 아직 깨울 시간이 아닌 스레드가 나오면 다음 확인은 스레드들도 모두 아직 깨울 시간이 아니므로 종료.
+          break;
+      }
+  }
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
