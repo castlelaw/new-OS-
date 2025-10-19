@@ -7,6 +7,7 @@
 #include "threads/interrupt.h"
 #include "threads/synch.h"
 #include "threads/thread.h"
+#include "threads/list.h"
   
 /* See [8254] for hardware details of the 8254 timer chip. */
 
@@ -24,6 +25,13 @@ static int64_t ticks;
    Initialized by timer_calibrate(). */
 static unsigned loops_per_tick;
 
+/* sleep 스레드의 리스트. 깨어날 시간이 가장 빠른 스레드가 리스트 헤드에 위치하도록 정렬 */
+static struct list sleep_list;
+/* sleep_list를 위한 비교 함수. threads/thread.h에 있는 list_less_func의 정의를 사용해야 함.
+   thread 구조체에 'wakeup_tick' 필드가 추가되어 있다고 가정. */
+static bool thread_wakeup_tick_less (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+
+
 static intr_handler_func timer_interrupt;
 static bool too_many_loops (unsigned loops);
 static void busy_wait (int64_t loops);
@@ -37,6 +45,10 @@ timer_init (void)
 {
   pit_configure_channel (0, 2, TIMER_FREQ);
   intr_register_ext (0x20, timer_interrupt, "8254 Timer");
+  
+  /* 리스트 자료구조를 초기화 */
+  list_init (&sleep_list);
+  
 }
 
 /* Calibrates loops_per_tick, used to implement brief delays. */
@@ -90,10 +102,25 @@ void
 timer_sleep (int64_t ticks) 
 {
   int64_t start = timer_ticks ();
-
+  int64_t wakeup_tick = start + ticks;
+  
   ASSERT (intr_get_level () == INTR_ON);
-  while (timer_elapsed (start) < ticks) 
-    thread_yield ();
+  if (ticks <= 0) {
+      return; // 0이하의 틱은 바로 리턴
+  }
+
+  enum intr_level old_level = intr_disable (); // 리스트 조작을 위해 인터럽트 비활성화
+  
+  // 현재 스레드의 깨어날 시간을 설정. 
+  thread_current ()->wakeup_tick = wakeup_tick; 
+
+  // 깨어날 틱 순서대로 sleep_list에 삽입.
+  list_insert_ordered (&sleep_list, &thread_current ()->elem, thread_wakeup_tick_less, NULL);
+
+  // 현재 스레드를 BLOCKED 상태로 전환.
+  thread_block ();
+
+  intr_set_level (old_level); // 인터럽트 복구
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -171,6 +198,10 @@ static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
+
+  // 잠든 스레드를 확인하고 깨움.
+  struct list_elem *e;
+  
   thread_tick ();
 }
 
