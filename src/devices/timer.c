@@ -30,12 +30,12 @@ static struct list sleep_list;
 
 /* sleep_list 정렬을 위한 비교 함수 */
 static bool
-thread_wakeup_tick_less (const struct list_elem *a,
-                         const struct list_elem *b,
-                         void *aux UNUSED) {
-    struct thread *t1 = list_entry(a, struct thread, elem);
-    struct thread *t2 = list_entry(b, struct thread, elem);
-    return t1->wakeup_tick < t2->wakeup_tick;
+thread_wakeup_tick_less (const struct list_elem *a, // a: 첫 번째 리스트 원소
+                         const struct list_elem *b, // b: 두 번째 리스트 원소
+                         void *aux UNUSED) {        // aux: 보조 자료 (사용하지 않음)
+    struct thread *t1 = list_entry(a, struct thread, elem); // a가 가리키는 스레드
+    struct thread *t2 = list_entry(b, struct thread, elem); // b가 가리키는 스레드
+    return t1->wakeup_tick < t2->wakeup_tick; // 깨어날 틱이 더 작은 스레드가 앞에 오도록 함
 }
 
 
@@ -53,7 +53,7 @@ timer_init (void)
   pit_configure_channel (0, 2, TIMER_FREQ);
   intr_register_ext (0x20, timer_interrupt, "8254 Timer");
   
-  /* 리스트 자료구조를 초기화 */
+  /* 리스트 자료구조를 초기화 가장 먼저 실행 */
   list_init (&sleep_list);
   
 }
@@ -108,10 +108,10 @@ timer_elapsed (int64_t then)
 void
 timer_sleep (int64_t ticks) 
 {
-  int64_t start = timer_ticks ();
-  int64_t wakeup_tick = start + ticks;
+  int64_t start = timer_ticks (); // 현재 틱 수
+  int64_t wakeup_tick = start + ticks; // 깨어날 틱 수
   
-  ASSERT (intr_get_level () == INTR_ON);
+  ASSERT (intr_get_level () == INTR_ON); // 인터럽트가 켜져 있어야 함
   if (ticks <= 0) {
       return; // 0이하의 틱은 바로 리턴
   }
@@ -204,14 +204,14 @@ timer_print_stats (void)
 static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
-  ticks++;
-  thread_tick ();
+  ticks++; // 전역 틱 수 증가
+  thread_tick (); // 현재 실행중인 스레드 관리
 
   // 잠든 스레드를 확인하고 깨움.
-  struct list_elem *e=list_begin (&sleep_list);
-  while (e != list_end (&sleep_list)) {
-      struct thread *t = list_entry (e, struct thread, elem);
-      if (t->wakeup_tick <= ticks) {
+  struct list_elem *e=list_begin (&sleep_list); // sleep_list의 첫 번째 원소부터 확인
+  while (e != list_end (&sleep_list)) { // 리스트의 끝까지 반복
+      struct thread *t = list_entry (e, struct thread, elem);     // e가 가리키는 스레드
+      if (t->wakeup_tick <= ticks) { // 깨울 시간이 된 스레드인가?
           // 깨울 스레드를 sleep_list에서 제거하고 깨움.
           e = list_remove (e); // 다음 원소를 가리키도록 e 갱신
           thread_unblock (t);
