@@ -68,7 +68,8 @@ sema_down (struct semaphore *sema)
   old_level = intr_disable ();
   while (sema->value == 0) 
     {
-      list_push_back (&sema->waiters, &thread_current ()->elem);
+       /*대기 리스트에 우선순위 순으로 삽입*/
+      list_insert_ordered (&sema->waiters, &thread_current ()->elem, thread_cmp_priority, NULL);
       thread_block ();
     }
   sema->value--;
@@ -114,6 +115,7 @@ sema_up (struct semaphore *sema)
 
   old_level = intr_disable ();
   if (!list_empty (&sema->waiters)) 
+     /*가장 높은 우선순위의 스레드를 대기 리스트 맨 앞에서 꺼내어 unblock */
     thread_unblock (list_entry (list_pop_front (&sema->waiters),
                                 struct thread, elem));
   sema->value++;
@@ -195,8 +197,22 @@ lock_acquire (struct lock *lock)
   ASSERT (lock != NULL);
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
+   if (lock->holder != NULL)
+    {
+      /* 1. 현재 스레드를 락 보유자의 donations 리스트에 추가 */
+      list_insert_ordered (&lock->holder->donations, &curr->donation_elem, thread_cmp_donation_priority, NULL);
+      
+      /* 2. 현재 스레드가 기다리는 락을 설정 */
+      curr->wait_on_lock = lock;
+
+      /* 3. 우선순위 기부를 실행하여 락 보유자에게 현재 스레드의 우선순위를 상속 */
+      donate_priority ();
+    }
 
   sema_down (&lock->semaphore);
+
+   /* 락 획득 성공 후, 현재 스레드는 더 이상 대기하지 않으므로 wait_on_lock을 NULL로 설정 */
+  curr->wait_on_lock = NULL;
   lock->holder = thread_current ();
 }
 
@@ -231,8 +247,17 @@ lock_release (struct lock *lock)
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
 
+   /* 1. 우선순위 기부 해제 및 새로고침 */
+  if (lock->holder != NULL)
+    {
+      remove_with_lock (lock); /* 현재 스레드에게 기부했던 스레드들 제거 및 우선순위 새로고침 */
+    }
+
   lock->holder = NULL;
   sema_up (&lock->semaphore);
+
+   /* 락 해제 후, 현재 스레드의 우선순위가 더 이상 최고가 아니면 즉시 양보 */
+  thread_check_preemption ();
 }
 
 /* Returns true if the current thread holds LOCK, false
