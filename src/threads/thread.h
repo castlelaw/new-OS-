@@ -24,6 +24,11 @@ typedef int tid_t;
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
 
+
+/* synch.h에 정의된 struct lock을 위한 선언언 */
+struct lock;
+
+
 /* A kernel thread or user process.
 
    Each thread structure is stored in its own 4 kB page.  The
@@ -92,6 +97,15 @@ struct thread
     
     int64_t wakeup_tick; /*깨워야 할 시점*/
 
+
+/* Project 1: Priority Scheduling & Donation - 우선순위 스케줄링 및 기부 */
+    int init_priority;                  /* thread_set_priority로 설정된 기본 우선순위 기부 시에도 유지 */
+    struct lock *wait_on_lock;          /* 현재 이 스레드가 획득하기 위해 대기 중인 락. NULL이면 대기 중이 아님. */
+    struct list donations;              /* 이 스레드에게 우선순위를 기부한 스레드들의 리스트 */
+    struct list_elem donation_elem;     /* 다른 스레드의 'donations' 리스트에 삽입될 때 사용되는 리스트 요소 */
+
+
+
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
 
@@ -134,6 +148,21 @@ void thread_foreach (thread_action_func *, void *);
 
 int thread_get_priority (void);
 void thread_set_priority (int);
+
+
+/* 스레드 우선순위를 비교하여 정렬하는 함수 */
+bool thread_cmp_priority (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+/* 기부 리스트 내 스레드 우선순위를 비교하는 함수 */
+bool thread_cmp_donation_priority (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+/* 현재 스레드의 우선순위가 최고가 아닐 경우 CPU를 양보하는 함수 */
+void thread_check_preemption (void);
+/* 기본 우선순위와 기부된 우선순위를 비교하여 우선순위를 새로고침하는 함수 */
+void refresh_priority (void);
+/* 현재 스레드의 우선순위를 락 보유자에게 기부하는 함수 */
+void donate_priority (void);
+/* 락 해제 시, 현재 스레드에게 해당 락을 기다리며 기부했던 스레드들을 제거하는 함수 */
+void remove_with_lock (struct lock *lock);
+
 
 int thread_get_nice (void);
 void thread_set_nice (int);
