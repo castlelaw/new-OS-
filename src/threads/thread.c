@@ -204,8 +204,9 @@ thread_tick (void)
     intr_yield_on_return ();
 
 
-  if (thread_mlfqs && t != idle_thread) {
-      t->recent_cpu = ADD_FP(t->recent_cpu, INT_TO_FP(1));
+  if (thread_mlfqs) {
+  if (t != idle_thread)
+    t->recent_cpu = ADD_FP(t->recent_cpu, INT_TO_FP(1));
 
     if (timer_ticks() % TIMER_FREQ == 0)
       update_load_avg_and_recent_cpu();
@@ -258,6 +259,9 @@ thread_create (const char *name, int priority,
   /* Initialize thread. */
   init_thread (t, name, priority);
   tid = t->tid = allocate_tid ();
+  if (thread_mlfqs) {
+    recompute_priority(t);
+  }
 
   /* Stack frame for kernel_thread(). */
   kf = alloc_frame (t, sizeof *kf);
@@ -524,11 +528,13 @@ static void
 recompute_priority(struct thread *t) {
   if (t == idle_thread) return;
   int new_priority = PRI_MAX
-                       - FP_TO_INT_NEAR(DIV_MIX(t->recent_cpu, INT_TO_FP(4)))
+                       - FP_TO_INT_NEAR(DIV_MIX(t->recent_cpu, 4))
                        - (t->nice * 2);
   if (new_priority < PRI_MIN) new_priority = PRI_MIN;
   if (new_priority > PRI_MAX) new_priority = PRI_MAX;
   t->priority = new_priority;
+  if (t->status == THREAD_READY)
+    list_sort(&ready_list, thread_cmp_priority, NULL);
 }
 
 void
@@ -644,14 +650,19 @@ init_thread (struct thread *t, const char *name, int priority)
   t->status = THREAD_BLOCKED;
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
-  t->priority = priority;
+  
   t->wakeup_tick = 0; /* 타이머 sleep용 필드 초기화*/
     /*donation 관련 필드 초기화 */
-  t->nice = 0;           /* [추가됨] 기본 nice 값 */
-  t->recent_cpu = 0;
-
-  t->init_priority = priority;
-  t->wait_on_lock = NULL;
+  
+  if (thread_mlfqs) {
+    t->nice = 0;           /* [추가됨] 기본 nice 값 */
+    t->recent_cpu = 0;
+    recompute_priority(t);
+  } else {
+    t->priority = priority;
+    t->init_priority = priority;
+  }
+    t->wait_on_lock = NULL;
   list_init (&t->donations);
   t->magic = THREAD_MAGIC;
 
