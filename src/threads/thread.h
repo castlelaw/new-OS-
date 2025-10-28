@@ -99,8 +99,8 @@ struct thread
 
 
 /* Priority Scheduling & Donation - 우선순위 스케줄링 및 기부 */
-    int init_priority;                  /* thread_set_priority로 설정된 기본 우선순위 기부 시에도 유지 */
-    struct lock *wait_on_lock;          /* 현재 이 스레드가 획득하기 위해 대기 중인 락. NULL이면 대기 중이 아님. */
+    int init_priority;                  /* thread_set_priority로 설정된 기본 우선순위 기부 시에도 유지하여 나중에 정확하게 복구하기 위함 */
+    struct lock *wait_on_lock;          /* 현재 이 스레드가 획득하기 위해 대기 중인 락의 주소 저장. NULL이면 대기 중이 아님 */
     struct list donations;              /* 이 스레드에게 우선순위를 기부한 스레드들의 리스트 */
     struct list_elem donation_elem;     /* 다른 스레드의 'donations' 리스트에 삽입될 때 사용되는 리스트 요소 */
 
