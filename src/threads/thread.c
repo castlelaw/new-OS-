@@ -477,7 +477,7 @@ remove_with_lock (struct lock *lock) {
 int
 thread_get_priority (void)
 {
-  /* 현재 스레드의 유효 우선순위(priority) 값을 반환 */
+/* 현재 스레드의 유효 우선순위(priority) 값을 반환 */
   return thread_current ()->priority;
 }
 
