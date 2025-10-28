@@ -399,6 +399,50 @@ struct thread *cur = thread_current ();
   }
 }
 
+/* 현재 스레드보다 높은 우선순위 스레드가 ready_list에 있으면 CPU 양보 */
+void
+thread_check_preemption (void) {
+  if (!list_empty(&ready_list)) {
+    struct thread *highest = list_entry(list_front(&ready_list),
+                                        struct thread, elem);
+    if (highest->priority > thread_current()->priority)
+      thread_yield();
+  }
+}
+
+/* 현재 스레드가 기다리는 락 보유자에게 우선순위 기부 */
+void
+donate_priority (void) {
+  struct thread *cur = thread_current();
+  struct lock *lock = cur->wait_on_lock;
+  int depth = 0;
+
+  while (lock && lock->holder && depth < 8) { // 최대 8단계 깊이 제한
+    if (lock->holder->priority < cur->priority) {
+      lock->holder->priority = cur->priority;
+    }
+    cur = lock->holder;
+    lock = cur->wait_on_lock;
+    depth++;
+  }
+}
+
+/* 특정 락을 해제할 때 해당 락 때문에 기부되었던 우선순위를 donations 리스트에서 제거 */
+void
+remove_with_lock (struct lock *lock) {
+  struct thread *cur = thread_current();
+  struct list_elem *e = list_begin(&cur->donations);
+
+  while (e != list_end(&cur->donations)) {
+    struct thread *t = list_entry(e, struct thread, donation_elem);
+    if (t->wait_on_lock == lock) {
+      e = list_remove(&t->donation_elem);
+    } else {
+      e = list_next(e);
+    }
+  }
+}
+
 /* Returns the current thread's priority. */
 int
 thread_get_priority (void) 
