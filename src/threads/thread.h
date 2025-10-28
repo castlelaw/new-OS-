@@ -8,10 +8,10 @@
 /* States in a thread's life cycle. */
 enum thread_status
   {
-    THREAD_RUNNING,     /* Running thread. */
-    THREAD_READY,       /* Not running but ready to run. */
-    THREAD_BLOCKED,     /* Waiting for an event to trigger. */
-    THREAD_DYING        /* About to be destroyed. */
+    THREAD_RUNNING,      /* Running thread. */
+    THREAD_READY,        /* Not running but ready to run. */
+    THREAD_BLOCKED,      /* Waiting for an event to trigger. */
+    THREAD_DYING         /* About to be destroyed. */
   };
 
 /* Thread identifier type.
@@ -37,27 +37,27 @@ struct lock;
    thread's kernel stack, which grows downward from the top of
    the page (at offset 4 kB).  Here's an illustration:
 
-        4 kB +---------------------------------+
-             |          kernel stack           |
-             |                |                |
-             |                |                |
-             |                V                |
-             |         grows downward          |
-             |                                 |
-             |                                 |
-             |                                 |
-             |                                 |
-             |                                 |
-             |                                 |
-             |                                 |
-             |                                 |
-             +---------------------------------+
-             |              magic              |
-             |                :                |
-             |                :                |
-             |               name              |
-             |              status             |
-        0 kB +---------------------------------+
+      4 kB +---------------------------------+
+           |         kernel stack            |
+           |               |                 |
+           |               |                 |
+           |               V                 |
+           |         grows downward          |
+           |                                 |
+           |                                 |
+           |                                 |
+           |                                 |
+           |                                 |
+           |                                 |
+           |                                 |
+           |                                 |
+           +---------------------------------+
+           |             magic               |
+           |               :                 |
+           |               :                 |
+           |              name               |
+           |             status              |
+      0 kB +---------------------------------+
 
    The upshot of this is twofold:
 
@@ -88,36 +88,36 @@ struct lock;
 struct thread
   {
     /* Owned by thread.c. */
-    tid_t tid;                          /* Thread identifier. */
-    enum thread_status status;          /* Thread state. */
-    char name[16];                      /* Name (for debugging purposes). */
-    uint8_t *stack;                     /* Saved stack pointer. */
-    int priority;                       /* Priority. */
+    tid_t tid;                       /* Thread identifier. */
+    enum thread_status status;       /* Thread state. */
+    char name[16];                   /* Name (for debugging purposes). */
+    uint8_t *stack;                  /* Saved stack pointer. */
+    int priority;                    /* Priority. */
     int nice;
     int recent_cpu;
-    struct list_elem allelem;           /* List element for all threads list. */
-    
+    struct list_elem allelem;       /* List element for all threads list. */
+
     int64_t wakeup_tick; /*깨워야 할 시점*/
 
 
 /* Priority Scheduling & Donation - 우선순위 스케줄링 및 기부 */
-    int init_priority;                  /* thread_set_priority로 설정된 기본 우선순위 기부 시에도 유지하여 나중에 정확하게 복구하기 위함 */
-    struct lock *wait_on_lock;          /* 현재 이 스레드가 획득하기 위해 대기 중인 락의 주소 저장. NULL이면 대기 중이 아님 */
-    struct list donations;              /* 이 스레드에게 우선순위를 기부한 스레드들의 리스트 */
-    struct list_elem donation_elem;     /* 다른 스레드의 'donations' 리스트에 삽입될 때 사용되는 리스트 요소 */
+    int init_priority;               /* thread_set_priority로 설정된 기본 우선순위 기부 시에도 유지하여 나중에 정확하게 복구하기 위함 */
+    struct lock *wait_on_lock;       /* 현재 이 스레드가 획득하기 위해 대기 중인 락의 주소 저장. NULL이면 대기 중이 아님 */
+    struct list donations;           /* 이 스레드에게 우선순위를 기부한 스레드들의 리스트 */
+    struct list_elem donation_elem;  /* 다른 스레드의 'donations' 리스트에 삽입될 때 사용되는 리스트 요소 */
 
 
 
     /* Shared between thread.c and synch.c. */
-    struct list_elem elem;              /* List element. */
+    struct list_elem elem;           /* List element. */
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
-    uint32_t *pagedir;                  /* Page directory. */
+    uint32_t *pagedir;               /* Page directory. */
 #endif
 
     /* Owned by thread.c. */
-    unsigned magic;                     /* Detects stack overflow. */
+    unsigned magic;                  /* Detects stack overflow. */
   };
 
 /* If false (default), use round-robin scheduler.
@@ -175,5 +175,3 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
-
-#endif /* threads/thread.h */
