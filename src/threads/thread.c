@@ -202,9 +202,8 @@ thread_tick (void)
     intr_yield_on_return ();
 
      
-  if (thread_mlfqs) {
-    if (t != idle_thread)
-      t->recent_cpu = ADD_MIX(t->recent_cpu, 1);
+  if (thread_mlfqs && t != idle_thread) {
+      t->recent_cpu = ADD_FP(t->recent_cpu, INT_TO_FP(1));
 
     if (timer_ticks() % TIMER_FREQ == 0)
       update_load_avg_and_recent_cpu();
@@ -507,7 +506,7 @@ thread_get_nice (void)
 int
 thread_get_load_avg (void) 
 {
-  return FP_TO_INT_ZERO(MULT_MIX(load_avg, 100));
+  return FP_TO_INT_NEAR(MULT_MIX(load_avg, 100));
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
@@ -539,18 +538,22 @@ update_load_avg_and_recent_cpu(void) {
   int ready_threads = list_size(&ready_list);
   if (thread_current() != idle_thread)
     ready_threads++;
+  int coeff_59 = DIV_FP (INT_TO_FP(59), INT_TO_FP(60));
+  int coeff_1  = DIV_FP (INT_TO_FP(1),  INT_TO_FP(60));
 
-  load_avg = ADD_FP(MULT_FP(DIV_MIX(INT_TO_FP(59), 60), load_avg),
-                    MULT_MIX(DIV_MIX(INT_TO_FP(1), 60), ready_threads));
+  load_avg = ADD_FP( MULT_FP(coeff_59, load_avg),
+                     MULT_FP(coeff_1,  INT_TO_FP(ready_threads)) );
 
   struct list_elem *e;
   for (e = list_begin(&all_list); e != list_end(&all_list); e = list_next(e)) {
     struct thread *t = list_entry(e, struct thread, allelem);
     if (t == idle_thread) continue;
-    int coef = DIV_FP(MULT_MIX(load_avg, 2),
-                      ADD_MIX(MULT_MIX(load_avg, 2), 1));
-    t->recent_cpu = ADD_MIX(MULT_FP(coef, t->recent_cpu), t->nice);
-    thread_update_priority(t, NULL);
+
+    int two_la = MULT_MIX(load_avg, 2);  // 2*load_avg (FP)
+    int coef   = DIV_FP(two_la, ADD_FP(two_la, INT_TO_FP(1)));
+
+    t->recent_cpu = ADD_FP(MULT_FP(coef, t->recent_cpu), INT_TO_FP(t->nice));
+    recompute_priority(t);
   }
 }
 /* Idle thread.  Executes when no other thread is ready to run.
