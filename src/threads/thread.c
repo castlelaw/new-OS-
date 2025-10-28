@@ -201,9 +201,11 @@ thread_tick (void)
   if (++thread_ticks >= TIME_SLICE)
     intr_yield_on_return ();
 
-     
-  if (thread_mlfqs && t != idle_thread) {
-      t->recent_cpu = ADD_FP(t->recent_cpu, INT_TO_FP(1));
+  if (thread_mlfqs) {
+    /* 실행 중인 스레드가 idle이 아닐 때만 recent_cpu += 1 */
+    if (t != idle_thread)
+      t->recent_cpu = ADD_MIX(t->recent_cpu, 1);   
+  
 
     if (timer_ticks() % TIMER_FREQ == 0)
       update_load_avg_and_recent_cpu();
