@@ -84,7 +84,8 @@ static void *alloc_frame (struct thread *, size_t size);
 static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
-
+void thread_update_priority(struct thread *t);
+void update_load_avg_and_recent_cpu(void);
 
 /* 레디큐나 대기큐에서 우선순위를 비교하여 정렬하는 함수
    우선순위가 높을수록 앞에 위치 */
