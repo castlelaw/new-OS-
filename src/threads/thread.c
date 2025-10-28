@@ -413,14 +413,17 @@ thread_foreach (thread_action_func *func, void *aux)
 
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
+/* 현재 스레드의 우선순위가 변경된 후, ready_list의 가장 높은 우선순위 스레드와 비교하여
+   선점(preemption)이 필요한지 확인하고, 필요하다면 CPU를 양보 */
 thread_set_priority (int new_priority)
 {
-  if (thread_mlfqs)
-    return;
-  struct thread *cur = thread_current ();
-/*init_priority 유지 + refresh */
-  cur->init_priority = new_priority;
-  refresh_priority (cur);
+  if (thread_mlfqs)
+    return;
+  struct thread *cur = thread_current ();
+  cur->init_priority = new_priority;
+  refresh_priority (cur);
+  thread_check_preemption();
+}
 
 /* 현재 스레드보다 높은 우선순위 스레드가 ready_list에 있으면 CPU 양보 */
 void
