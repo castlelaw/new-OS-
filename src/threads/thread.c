@@ -13,7 +13,9 @@
 #include "threads/vaddr.h"
 #ifdef USERPROG
 #include "userprog/process.h"
+
 #endif
+#include "devices/timer.h" 
 #define F (1 << 14)                        /* 1 in fixed-point */
 #define INT_TO_FP(n) ((n) * F)             /* Integer -> FP */
 #define FP_TO_INT_ZERO(x) ((x) / F)        /* FP -> Integer (toward zero) */
@@ -207,7 +209,7 @@ thread_tick (void)
       update_load_avg_and_recent_cpu();
 
     if (timer_ticks() % 4 == 0)
-      thread_foreach((thread_action_func *) thread_update_priority, NULL);
+      thread_foreach(thread_update_priority, NULL);
   }
 }
 
@@ -515,7 +517,7 @@ thread_get_recent_cpu (void)
 }
 
 void
-thread_update_priority(struct thread *t) {
+thread_update_priority(struct thread *t,void *aux UNUSED) {
   if (t == idle_thread) return;
   int new_priority = PRI_MAX
                      - FP_TO_INT_NEAR(DIV_MIX(t->recent_cpu, 4))
