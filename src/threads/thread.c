@@ -511,7 +511,7 @@ thread_get_recent_cpu (void)
 {
   return FP_TO_INT_NEAR(MULT_MIX(thread_current()->recent_cpu, 100));
 }
-
+
 
 static void
 recompute_priority(struct thread *t) {
@@ -600,7 +600,7 @@ kernel_thread (thread_func *function, void *aux)
   function (aux);        /* Execute the thread function. */
   thread_exit ();        /* If function() returns, kill the thread. */
 }
-
+
 /* Returns the running thread. */
 struct thread *
 running_thread (void)
