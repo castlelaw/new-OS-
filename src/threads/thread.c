@@ -417,11 +417,11 @@ void
    선점(preemption)이 필요한지 확인하고, 필요하다면 CPU를 양보 */
 thread_set_priority (int new_priority)
 {
-  if (thread_mlfqs)
-    return;
-  struct thread *cur = thread_current ();
-  cur->init_priority = new_priority;
-  refresh_priority (cur);
+  if (thread_mlfqs)
+   return;
+  struct thread *cur = thread_current ();
+  cur->init_priority = new_priority;
+  refresh_priority (cur);
   thread_check_preemption();
 }
 
@@ -439,20 +439,20 @@ thread_check_preemption (void) {
 /* 현재 스레드가 기다리는 락 보유자에게 우선순위 기부 */
 void
 donate_priority (void) {
-  struct thread *cur = thread_current();
-  struct lock *lock = cur->wait_on_lock;
-  int depth = 0;
+  struct thread *cur = thread_current();
+  struct lock *lock = cur->wait_on_lock;
+  int depth = 0;
 
-  
-  while (lock != NULL && lock->holder != NULL && depth < 8) {
-    struct thread *holder = lock->holder;
+  
+  while (lock != NULL && lock->holder != NULL && depth < 8) {
+    struct thread *holder = lock->holder;
 
-    refresh_priority(holder);
+    refresh_priority(holder);
     
-    cur = holder;
-    lock = cur->wait_on_lock;
-    depth++;
-  }
+    cur = holder;
+    lock = cur->wait_on_lock;
+    depth++;
+  }
 }
 
 /* 특정 락을 해제할 때 해당 락 때문에 기부되었던 우선순위를 donations 리스트에서 제거 */
@@ -478,7 +478,7 @@ int
 thread_get_priority (void)
 {
   /* 현재 스레드의 유효 우선순위(priority) 값을 반환 */
-  return thread_current ()->priority;
+  return thread_current ()->priority;
 }
 
 /* Sets the current thread's nice value to NICE. */
