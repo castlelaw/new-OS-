@@ -196,6 +196,18 @@ thread_tick (void)
   /* Enforce preemption. */
   if (++thread_ticks >= TIME_SLICE)
     intr_yield_on_return ();
+
+     
+  if (thread_mlfqs) {
+    if (t != idle_thread)
+      t->recent_cpu = ADD_MIX(t->recent_cpu, 1);
+
+    if (timer_ticks() % TIMER_FREQ == 0)
+      update_load_avg_and_recent_cpu();
+
+    if (timer_ticks() % 4 == 0)
+      thread_foreach((thread_action_func *) thread_update_priority, NULL);
+  }
 }
 
 /* Prints thread statistics. */
@@ -400,7 +412,9 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-struct thread *cur = thread_current ();
+  if (thread_mlfqs)
+    return;
+  struct thread *cur = thread_current ();
 /*init_priority 유지 + refresh */
   cur->init_priority = new_priority;
   refresh_priority (cur);
@@ -483,7 +497,6 @@ int
 thread_get_nice (void) 
 {
   return thread_current()->nice;
-  return 0;
 }
 
 /* Returns 100 times the system load average. */
@@ -500,6 +513,36 @@ thread_get_recent_cpu (void)
   return FP_TO_INT_NEAR(MULT_MIX(thread_current()->recent_cpu, 100));
 }
 
+void
+thread_update_priority(struct thread *t) {
+  if (t == idle_thread) return;
+  int new_priority = PRI_MAX
+                     - FP_TO_INT_NEAR(DIV_MIX(t->recent_cpu, 4))
+                     - (t->nice * 2);
+  if (new_priority < PRI_MIN) new_priority = PRI_MIN;
+  if (new_priority > PRI_MAX) new_priority = PRI_MAX;
+  t->priority = new_priority;
+}
+
+void
+update_load_avg_and_recent_cpu(void) {
+  int ready_threads = list_size(&ready_list);
+  if (thread_current() != idle_thread)
+    ready_threads++;
+
+  load_avg = ADD_FP(MULT_FP(DIV_MIX(INT_TO_FP(59), 60), load_avg),
+                    MULT_MIX(DIV_MIX(INT_TO_FP(1), 60), ready_threads));
+
+  struct list_elem *e;
+  for (e = list_begin(&all_list); e != list_end(&all_list); e = list_next(e)) {
+    struct thread *t = list_entry(e, struct thread, allelem);
+    if (t == idle_thread) continue;
+    int coef = DIV_FP(MULT_MIX(load_avg, 2),
+                      ADD_MIX(MULT_MIX(load_avg, 2), 1));
+    t->recent_cpu = ADD_MIX(MULT_FP(coef, t->recent_cpu), t->nice);
+    thread_update_priority(t);
+  }
+}
 /* Idle thread.  Executes when no other thread is ready to run.
 
    The idle thread is initially put on the ready list by
@@ -588,6 +631,9 @@ init_thread (struct thread *t, const char *name, int priority)
   t->priority = priority;
   t->wakeup_tick = 0; /* 타이머 sleep용 필드 초기화*/
    /*donation 관련 필드 초기화 */
+  t->nice = 0;          /* [추가됨] 기본 nice 값 */
+  t->recent_cpu = 0;
+  
   t->init_priority = priority;
   t->wait_on_lock = NULL;
   list_init (&t->donations);
