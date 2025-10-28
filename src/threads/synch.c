@@ -221,10 +221,22 @@ lock_acquire (struct lock *lock)
 
   sema_down (&lock->semaphore);
 
-    /* 락 획득 성공 후, 현재 스레드는 더 이상 대기하지 않으므로 wait_on_lock을 NULL로 설정 */
-  curr->wait_on_lock = NULL;
-  lock->holder = thread_current ();
+        
+        
+    /* 락 획득 성공 후 */
+    
+    /* 락을 기다리며 기부했던 관계를 끊음: */
+    if (curr->wait_on_lock != NULL) {
+      list_remove(&curr->donation_elem);
+    }
+
+  /* 현재 스레드는 더 이상 대기하지 않으므로 wait_on_lock을 NULL로 설정 */
+  curr->wait_on_lock = NULL;
+  lock->holder = thread_current ();
 }
+
+
+
 
 /* Tries to acquires LOCK and returns true if successful or false
    on failure.  The lock must not already be held by the current
