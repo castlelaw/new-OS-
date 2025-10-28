@@ -439,18 +439,20 @@ thread_check_preemption (void) {
 /* 현재 스레드가 기다리는 락 보유자에게 우선순위 기부 */
 void
 donate_priority (void) {
-  struct thread *cur = thread_current();
-  struct lock *lock = cur->wait_on_lock;
-  int depth = 0;
+  struct thread *cur = thread_current();
+  struct lock *lock = cur->wait_on_lock;
+  int depth = 0;
 
-  while (lock && lock->holder && depth < 8) { // 최대 8단계 깊이 제한
-    if (lock->holder->priority < cur->priority) {
-      lock->holder->priority = cur->priority;
-    }
-    cur = lock->holder;
-    lock = cur->wait_on_lock;
-    depth++;
-  }
+  
+  while (lock != NULL && lock->holder != NULL && depth < 8) {
+    struct thread *holder = lock->holder;
+
+    refresh_priority(holder);
+    
+    cur = holder;
+    lock = cur->wait_on_lock;
+    depth++;
+  }
 }
 
 /* 특정 락을 해제할 때 해당 락 때문에 기부되었던 우선순위를 donations 리스트에서 제거 */
