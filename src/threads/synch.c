@@ -210,10 +210,10 @@ lock_acquire (struct lock *lock)
     if (lock->holder != NULL)
      {
        /* 1. 현재 스레드가 기다리는 락을 설정 */ 
-       curr->wait_on_lock = lock;
-       
+       curr->wait_on_lock = lock;
+       
        /* 2. 현재 스레드를 락 보유자의 donations 리스트에 추가 */
-       list_insert_ordered (&lock->holder->donations, &curr->donation_elem, thread_cmp_donation_priority, NULL);
+       list_insert_ordered (&lock->holder->donations, &curr->donation_elem, thread_cmp_donation_priority, NULL);
 
        /* 3. 우선순위 기부를 실행하여 락 보유자에게 현재 스레드의 우선순위를 상속 */
        donate_priority ();
@@ -224,15 +224,15 @@ lock_acquire (struct lock *lock)
         
         
     /* 락 획득 성공 후 */
-    
+    
     /* 락을 기다리며 기부했던 관계를 끊음: */
-    if (curr->wait_on_lock != NULL) {
-      list_remove(&curr->donation_elem);
-    }
+    if (curr->wait_on_lock != NULL) {
+      list_remove(&curr->donation_elem);
+    }
 
   /* 현재 스레드는 더 이상 대기하지 않으므로 wait_on_lock을 NULL로 설정 */
-  curr->wait_on_lock = NULL;
-  lock->holder = thread_current ();
+  curr->wait_on_lock = NULL;
+  lock->holder = thread_current ();
 }
 
 
