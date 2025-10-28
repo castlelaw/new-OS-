@@ -71,6 +71,51 @@ static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
+
+/* 레디큐나 대기큐에서 우선순위를 비교하여 정렬하는 함수
+   우선순위가 높을수록 앞에 위치 */
+bool
+thread_cmp_priority (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) 
+{
+  return list_entry (a, struct thread, elem)->priority >
+         list_entry (b, struct thread, elem)->priority;
+}
+
+/* donation 리스트에서 우선순위를 비교하여 정렬하는 함수
+   기부된 우선순위가 높을수록 앞에 위치. */
+bool
+thread_cmp_donation_priority (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) 
+{
+  return list_entry (a, struct thread, donation_elem)->priority >
+         list_entry (b, struct thread, donation_elem)->priority;
+}
+
+/* 기본 우선순위(init_priority)와 기부된 우선순위 중 가장 높은 값으로 
+   스레드의 유효 우선순위(priority)를 업데이트 */
+void
+refresh_priority (void)
+{
+  struct thread *t = thread_current ();
+  int new_priority = t->init_priority;
+  
+  /* donations 리스트에 기부자가 있다면 */
+  if (!list_empty (&t->donations))
+    {
+      /* donations 리스트를 기부 우선순위가 높은 순으로 정렬 */
+      list_sort (&t->donations, thread_cmp_donation_priority, NULL);
+      
+      /* 리스트의 맨 앞 스레드(가장 높은 우선순위를 기부한 스레드)의 우선순위를 가져옴 */
+      struct thread *donor = list_entry (list_front (&t->donations), struct thread, donation_elem);
+      if (donor->priority > new_priority)
+        new_priority = donor->priority;
+    }
+    
+  t->priority = new_priority;
+}
+
+
+
+
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
    general and it is possible in this case only because loader.S
