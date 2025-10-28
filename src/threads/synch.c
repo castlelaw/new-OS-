@@ -120,6 +120,9 @@ sema_up (struct semaphore *sema)
                                 struct thread, elem));
   sema->value++;
   intr_set_level (old_level);
+
+  /*더 높은 priority가 깨어났으면 preemption */
+  thread_check_preemption ();
 }
 
 static void sema_test_helper (void *sema_);
@@ -197,6 +200,8 @@ lock_acquire (struct lock *lock)
   ASSERT (lock != NULL);
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
+     /*현재 스레드 포인터 */
+  struct thread *curr = thread_current ();
    if (lock->holder != NULL)
     {
       /* 1. 현재 스레드를 락 보유자의 donations 리스트에 추가 */
@@ -252,7 +257,9 @@ lock_release (struct lock *lock)
     {
       remove_with_lock (lock); /* 현재 스레드에게 기부했던 스레드들 제거 및 우선순위 새로고침 */
     }
-
+/* 우선순위 새로고침 */
+  refresh_priority (thread_current ());
+   
   lock->holder = NULL;
   sema_up (&lock->semaphore);
 
@@ -342,8 +349,14 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED)
   ASSERT (lock_held_by_current_thread (lock));
 
   if (!list_empty (&cond->waiters)) 
-    sema_up (&list_entry (list_pop_front (&cond->waiters),
-                          struct semaphore_elem, elem)->semaphore);
+    {
+      /*condition waiters를 priority 순으로 정렬 */
+      list_sort (&cond->waiters,
+                 (list_less_func *) thread_cmp_priority, NULL);
+
+      sema_up (&list_entry (list_pop_front (&cond->waiters),
+                            struct semaphore_elem, elem)->semaphore);
+    }
 }
 
 /* Wakes up all threads, if any, waiting on COND (protected by
