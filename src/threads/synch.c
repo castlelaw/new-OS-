@@ -118,6 +118,7 @@ sema_up (struct semaphore *sema)
    /* 대기자 리스트에서 우선순위가 가장 높은 스레드를 깨움 (sema_down에서 우선순위 순으로 삽입됨) */
    if (!list_empty (&sema->waiters))
     {
+      list_sort (&sema->waiters, thread_cmp_priority, NULL);  
       struct thread *t =
         list_entry (list_pop_front (&sema->waiters), struct thread, elem);
       thread_unblock (t);
@@ -126,7 +127,9 @@ sema_up (struct semaphore *sema)
   intr_set_level (old_level);
 
   /*더 높은 priority가 깨어났으면 바로 양보 */
-  if (!intr_context ())
+  if (intr_context ())
+    intr_yield_on_return ();
+  else
     thread_check_preemption ();
 }
 
@@ -220,16 +223,11 @@ lock_acquire (struct lock *lock)
      }
 
   sema_down (&lock->semaphore);
-
-        
-        
-    /* 락 획득 성공 후 */
+  
+    /* 락 획득 성공 후: 이전 보유자 donations에서 내 엔트리 제거 */
+  if (curr->wait_on_lock != NULL)
+    list_remove (&curr->donation_elem);
     
-/* 락을 기다리며 기부했던 관계를 끊음: */
-    if (curr->wait_on_lock != NULL) {
-      list_remove(&curr->donation_elem);
-    }
-
 /* 현재 스레드는 더 이상 대기하지 않으므로 wait_on_lock을 NULL로 설정 */
   curr->wait_on_lock = NULL;
   lock->holder = thread_current ();
@@ -308,7 +306,15 @@ sema_elem_cmp_priority (const struct list_elem *a, const struct list_elem *b, vo
 {
   const struct semaphore_elem *sa = list_entry (a, struct semaphore_elem, elem);
   const struct semaphore_elem *sb = list_entry (b, struct semaphore_elem, elem);
-  return sa->priority > sb->priority;
+  ASSERT(!list_empty(&sa->semaphore.waiters));
+  ASSERT(!list_empty(&sb->semaphore.waiters));
+
+  struct thread *ta =
+    list_entry (list_front (&sa->semaphore.waiters), struct thread, elem);
+  struct thread *tb =
+    list_entry (list_front (&sb->semaphore.waiters), struct thread, elem);
+
+  return ta->priority > tb->priority;
 }
 
 /* Initializes condition variable COND.  A condition variable
@@ -355,7 +361,7 @@ cond_wait (struct condition *cond, struct lock *lock)
   sema_init (&waiter.semaphore, 0);
   waiter.priority = thread_current ()->priority;
   /*condition waiters를 priority 순으로 삽입 */
-  list_insert_ordered (&cond->waiters, &waiter.elem, sema_elem_cmp_priority, NULL);
+  list_push_back (&cond->waiters, &waiter.elem);
 
   lock_release (lock);
   sema_down (&waiter.semaphore);
@@ -380,7 +386,7 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED)
   if (!list_empty (&cond->waiters))
     {
       /* waiters 리스트는 cond_wait에서 list_insert_ordered로 이미 우선순위 순이므로 list_sort는 불필요함 */
-      /* list_sort (&cond->waiters, sema_elem_cmp_priority, NULL); */
+      list_sort (&cond->waiters, sema_elem_cmp_priority, NULL);
       struct semaphore_elem *sema_elem =
         list_entry (list_pop_front (&cond->waiters),
                     struct semaphore_elem, elem);

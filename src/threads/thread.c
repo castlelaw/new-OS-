@@ -128,6 +128,8 @@ refresh_priority (struct thread *t) /* t의 우선순위를 새로고침 */
     }
 
   t->priority = new_priority;
+  if (t->status == THREAD_READY)
+    list_sort(&ready_list, thread_cmp_priority, NULL);
 }
 
 
@@ -420,7 +422,7 @@ thread_set_priority (int new_priority)
   if (thread_mlfqs)
    return;
   struct thread *cur = thread_current ();
-  
+
   cur->init_priority = new_priority;
   refresh_priority (cur);
   thread_check_preemption();
