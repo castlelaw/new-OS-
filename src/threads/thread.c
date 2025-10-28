@@ -14,6 +14,18 @@
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
+#define F (1 << 14)                        /* 1 in fixed-point */
+#define INT_TO_FP(n) ((n) * F)             /* Integer -> FP */
+#define FP_TO_INT_ZERO(x) ((x) / F)        /* FP -> Integer (toward zero) */
+#define FP_TO_INT_NEAR(x) ((x) >= 0 ? ((x) + F/2) / F : ((x) - F/2) / F)
+#define ADD_FP(x, y) ((x) + (y))
+#define SUB_FP(x, y) ((x) - (y))
+#define ADD_MIX(x, n) ((x) + (n) * F)
+#define SUB_MIX(x, n) ((x) - (n) * F)
+#define MULT_FP(x, y) (((int64_t)(x)) * (y) / F)
+#define MULT_MIX(x, n) ((x) * (n))
+#define DIV_FP(x, y) (((int64_t)(x)) * F / (y))
+#define DIV_MIX(x, n) ((x) / (n))
 
 /* Random value for struct thread's `magic' member.
    Used to detect stack overflow.  See the big comment at the top
@@ -27,6 +39,8 @@ static struct list ready_list;
 /* List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
 static struct list all_list;
+
+static int load_avg;
 
 /* Idle thread. */
 static struct thread *idle_thread;
@@ -136,6 +150,7 @@ thread_init (void)
   lock_init (&tid_lock);
   list_init (&ready_list);
   list_init (&all_list);
+  load_avg = 0;
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
@@ -455,16 +470,19 @@ struct thread *cur = thread_current ();
 
 /* Sets the current thread's nice value to NICE. */
 void
-thread_set_nice (int nice UNUSED) 
+thread_set_nice (int nice) 
 {
-  /* Not yet implemented. */
+  struct thread *cur = thread_current();
+  cur->nice = nice;
+  thread_update_priority(cur);
+  thread_check_preemption();
 }
 
 /* Returns the current thread's nice value. */
 int
 thread_get_nice (void) 
 {
-  /* Not yet implemented. */
+  return thread_current()->nice;
   return 0;
 }
 
@@ -472,16 +490,14 @@ thread_get_nice (void)
 int
 thread_get_load_avg (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  return FP_TO_INT_NEAR(MULT_MIX(load_avg, 100));
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
 int
 thread_get_recent_cpu (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  return FP_TO_INT_NEAR(MULT_MIX(thread_current()->recent_cpu, 100));
 }
 
 /* Idle thread.  Executes when no other thread is ready to run.
