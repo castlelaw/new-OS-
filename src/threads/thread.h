@@ -160,7 +160,7 @@ bool thread_cmp_donation_priority (const struct list_elem *a, const struct list_
 void thread_check_preemption (void);
 
 /* 기본 우선순위와 기부된 우선순위를 비교하여 우선순위를 새로고침하는 함수 */
-void refresh_priority (void);
+void refresh_priority (struct thread *t);
 
 /* 현재 스레드의 우선순위를 락 보유자에게 기부하는 함수 */
 void donate_priority (void);
