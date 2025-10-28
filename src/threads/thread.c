@@ -444,10 +444,11 @@ donate_priority (void) {
   int depth = 0;
 
   
-  while (lock != NULL && lock->holder != NULL && depth < 8) {
-    struct thread *holder = lock->holder;
-
-    refresh_priority(holder);
+  while (lock && lock->holder && depth < 8) {
+    if (lock->holder->priority < cur->priority) {
+      lock->holder->priority = cur->priority;
+    }
+    
     
     cur = holder;
     lock = cur->wait_on_lock;
@@ -517,7 +518,7 @@ static void
 recompute_priority(struct thread *t) {
   if (t == idle_thread) return;
   int new_priority = PRI_MAX
-                       - FP_TO_INT_NEAR(DIV_MIX(t->recent_cpu, 4))
+                       - FP_TO_INT_NEAR(DIV_MIX(t->recent_cpu, INT_TO_FP(4)))
                        - (t->nice * 2);
   if (new_priority < PRI_MIN) new_priority = PRI_MIN;
   if (new_priority > PRI_MAX) new_priority = PRI_MAX;
