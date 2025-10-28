@@ -93,6 +93,8 @@ struct thread
     char name[16];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
+    int nice;
+    int recent_cpu;
     struct list_elem allelem;           /* List element for all threads list. */
     
     int64_t wakeup_tick; /*깨워야 할 시점*/
