@@ -444,12 +444,14 @@ donate_priority (void) {
   int depth = 0;
 
   
-  while (lock && lock->holder && depth < 8) {
-    if (lock->holder->priority < cur->priority) {
-      lock->holder->priority = cur->priority;
+   while (lock && lock->holder && depth < 8) {
+    struct thread *holder = lock->holder;
+
+    if (holder->priority < cur->priority) {
+      holder->priority = cur->priority;
     }
-    
-    
+
+    refresh_priority(holder);
     cur = holder;
     lock = cur->wait_on_lock;
     depth++;
