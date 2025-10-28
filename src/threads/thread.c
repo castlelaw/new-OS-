@@ -420,6 +420,7 @@ thread_set_priority (int new_priority)
   if (thread_mlfqs)
    return;
   struct thread *cur = thread_current ();
+  
   cur->init_priority = new_priority;
   refresh_priority (cur);
   thread_check_preemption();
@@ -447,9 +448,7 @@ donate_priority (void) {
    while (lock && lock->holder && depth < 8) {
     struct thread *holder = lock->holder;
 
-    if (holder->priority < cur->priority) {
-      holder->priority = cur->priority;
-    }
+  
 
     refresh_priority(holder);
     cur = holder;
@@ -467,7 +466,10 @@ remove_with_lock (struct lock *lock) {
   while (e != list_end(&cur->donations)) {
     struct thread *t = list_entry(e, struct thread, donation_elem);
     if (t->wait_on_lock == lock) {
-      e = list_remove(&t->donation_elem);
+      
+      struct list_elem *next = list_next(e);
+      list_remove(&t->donation_elem);
+      e = next;
     } else {
       e = list_next(e);
     }
