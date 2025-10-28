@@ -209,11 +209,11 @@ lock_acquire (struct lock *lock)
   struct thread *curr = thread_current ();
     if (lock->holder != NULL)
      {
-       /* 1. 현재 스레드를 락 보유자의 donations 리스트에 추가 */
-       list_insert_ordered (&lock->holder->donations, &curr->donation_elem, thread_cmp_donation_priority, NULL);
-
-       /* 2. 현재 스레드가 기다리는 락을 설정 */
-       curr->wait_on_lock = lock;
+       /* 1. 현재 스레드가 기다리는 락을 설정 */ 
+       curr->wait_on_lock = lock;
+       
+       /* 2. 현재 스레드를 락 보유자의 donations 리스트에 추가 */
+       list_insert_ordered (&lock->holder->donations, &curr->donation_elem, thread_cmp_donation_priority, NULL);
 
        /* 3. 우선순위 기부를 실행하여 락 보유자에게 현재 스레드의 우선순위를 상속 */
        donate_priority ();
