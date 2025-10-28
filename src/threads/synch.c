@@ -26,34 +26,6 @@
    MODIFICATIONS.
 */
 
-/* This file is derived from source code for the Nachos
-   instructional operating system.  The Nachos copyright notice
-   is reproduced in full below. */
-
-/* Copyright (c) 1992-1996 The Regents of the University of California.
-   All rights reserved.
-
-   Permission to use, copy, modify, and distribute this software
-   and its documentation for any purpose, without fee, and
-   without written agreement is hereby granted, provided that the
-   above copyright notice and the following two paragraphs appear
-   in all copies of this software.
-
-   IN NO EVENT SHALL THE UNIVERSITY OF CALIFORNIA BE LIABLE TO
-   ANY PARTY FOR DIRECT, INDIRECT, SPECIAL, INCIDENTAL, OR
-   CONSEQUENTIAL DAMAGES ARISING OUT OF THE USE OF THIS SOFTWARE
-   AND ITS DOCUMENTATION, EVEN IF THE UNIVERSITY OF CALIFORNIA
-   HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-   THE UNIVERSITY OF CALIFORNIA SPECIFICALLY DISCLAIMS ANY
-   WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
-   WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-   PURPOSE.  THE SOFTWARE PROVIDED HEREUNDER IS ON AN "AS IS"
-   BASIS, AND THE UNIVERSITY OF CALIFORNIA HAS NO OBLIGATION TO
-   PROVIDE MAINTENANCE, SUPPORT, UPDATES, ENHANCEMENTS, OR
-   MODIFICATIONS.
-*/
-
 #include "threads/synch.h"
 #include <stdio.h>
 #include <string.h>
@@ -142,10 +114,10 @@ sema_up (struct semaphore *sema)
   ASSERT (sema != NULL);
 
   old_level = intr_disable ();
-  if (!list_empty (&sema->waiters))
+ 
+   /* 대기자 리스트에서 우선순위가 가장 높은 스레드를 깨움 (sema_down에서 우선순위 순으로 삽입됨) */
+   if (!list_empty (&sema->waiters))
     {
-      /* waiters 리스트는 sema_down에서 list_insert_ordered로 이미 우선순위 순이므로 list_sort는 불필요함 */
-      /* list_sort (&sema->waiters, thread_cmp_priority, NULL); */
       struct thread *t =
         list_entry (list_pop_front (&sema->waiters), struct thread, elem);
       thread_unblock (t);
@@ -285,7 +257,7 @@ lock_release (struct lock *lock)
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
 
-  /* 1. 우선순위 기부 해제 및 새로고침 (remove_with_lock 내부에서 우선순위 새로고침까지 수행) */
+  /* 1. 우선순위 기부 해제 및 새로고침  */
   if (lock->holder != NULL)
     {
       remove_with_lock (lock);
