@@ -115,14 +115,19 @@ sema_up (struct semaphore *sema)
 
   old_level = intr_disable ();
   if (!list_empty (&sema->waiters)) 
-     /*가장 높은 우선순위의 스레드를 대기 리스트 맨 앞에서 꺼내어 unblock */
-    thread_unblock (list_entry (list_pop_front (&sema->waiters),
-                                struct thread, elem));
+   {
+     /*waiters 리스트를 우선순위순으로 정렬 */
+     list_sort (&sema->waiters, thread_cmp_priority, NULL);
+     struct thread *t = 
+       list_entry (list_pop_front (&sema->waiters), struct thread, elem);
+     thread_unblock (t);
+   }
   sema->value++;
   intr_set_level (old_level);
 
-  /*더 높은 priority가 깨어났으면 preemption */
-  thread_check_preemption ();
+  /*더 높은 priority가 깨어났으면 바로 양보 */
+  if (!intr_context ())
+    thread_check_preemption ();
 }
 
 static void sema_test_helper (void *sema_);
@@ -283,7 +288,16 @@ struct semaphore_elem
   {
     struct list_elem elem;              /* List element. */
     struct semaphore semaphore;         /* This semaphore. */
+    int priority;                     /* 대기 스레드 우선순위 저장. */
   };
+
+static bool // 조건변수용 비교 함수: 우선순위 높은 게 앞으로 감
+sema_elem_cmp_priority (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) 
+{
+  const struct semaphore_elem *sa = list_entry (a, struct semaphore_elem, elem);
+  const struct semaphore_elem *sb = list_entry (b, struct semaphore_elem, elem);
+  return sa->priority > sb->priority;
+}
 
 /* Initializes condition variable COND.  A condition variable
    allows one piece of code to signal a condition and cooperating
@@ -327,7 +341,11 @@ cond_wait (struct condition *cond, struct lock *lock)
   ASSERT (lock_held_by_current_thread (lock));
   
   sema_init (&waiter.semaphore, 0);
-  list_push_back (&cond->waiters, &waiter.elem);
+  // list_push_back (&cond->waiters, &waiter.elem); 단순 리스트 삽입이라 우선순위가 보장이 안됨
+  waiter.priority = thread_current ()->priority;
+  /*condition waiters를 priority 순으로 삽입 */
+  list_insert_ordered (&cond->waiters, &waiter.elem, sema_elem_cmp_priority, NULL); // 우선순위 기준으로 삽입
+
   lock_release (lock);
   sema_down (&waiter.semaphore);
   lock_acquire (lock);
@@ -351,11 +369,12 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED)
   if (!list_empty (&cond->waiters)) 
     {
       /*condition waiters를 priority 순으로 정렬 */
-      list_sort (&cond->waiters,
-                 (list_less_func *) thread_cmp_priority, NULL);
+      list_sort (&cond->waiters, sema_elem_cmp_priority, NULL);
+      struct semaphore_elem *sema_elem =
+        list_entry (list_pop_front (&cond->waiters),
+                    struct semaphore_elem, elem);
 
-      sema_up (&list_entry (list_pop_front (&cond->waiters),
-                            struct semaphore_elem, elem)->semaphore);
+      sema_up (&sema_elem->semaphore);
     }
 }
 
