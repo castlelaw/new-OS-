@@ -86,7 +86,8 @@ static void *alloc_frame (struct thread *, size_t size);
 static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
-void thread_update_priority(struct thread *t);
+static void recompute_priority(struct thread *t);
+void thread_update_priority(struct thread *t, void *aux UNUSED);
 void update_load_avg_and_recent_cpu(void);
 
 /* 레디큐나 대기큐에서 우선순위를 비교하여 정렬하는 함수
@@ -491,7 +492,7 @@ thread_set_nice (int nice)
 {
   struct thread *cur = thread_current();
   cur->nice = nice;
-  thread_update_priority(cur);
+  thread_update_priority(cur, NULL);
   thread_check_preemption();
 }
 
@@ -516,8 +517,9 @@ thread_get_recent_cpu (void)
   return FP_TO_INT_NEAR(MULT_MIX(thread_current()->recent_cpu, 100));
 }
 
-void
-thread_update_priority(struct thread *t,void *aux UNUSED) {
+
+static void
+recompute_priority(struct thread *t) {
   if (t == idle_thread) return;
   int new_priority = PRI_MAX
                      - FP_TO_INT_NEAR(DIV_MIX(t->recent_cpu, 4))
@@ -525,6 +527,11 @@ thread_update_priority(struct thread *t,void *aux UNUSED) {
   if (new_priority < PRI_MIN) new_priority = PRI_MIN;
   if (new_priority > PRI_MAX) new_priority = PRI_MAX;
   t->priority = new_priority;
+}
+
+void
+thread_update_priority(struct thread *t,void *aux UNUSED) {
+  recompute_priority(t);
 }
 
 void
@@ -543,7 +550,7 @@ update_load_avg_and_recent_cpu(void) {
     int coef = DIV_FP(MULT_MIX(load_avg, 2),
                       ADD_MIX(MULT_MIX(load_avg, 2), 1));
     t->recent_cpu = ADD_MIX(MULT_FP(coef, t->recent_cpu), t->nice);
-    thread_update_priority(t);
+    thread_update_priority(t, NULL);
   }
 }
 /* Idle thread.  Executes when no other thread is ready to run.
