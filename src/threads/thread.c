@@ -422,15 +422,6 @@ thread_set_priority (int new_priority)
   cur->init_priority = new_priority;
   refresh_priority (cur);
 
-  /*더 높은 priority 스레드가 있으면 CPU 양보 */
-  if (!list_empty(&ready_list)) {
-    struct thread *highest = list_entry (list_front(&ready_list),
-                                         struct thread, elem);
-    if (highest->priority > cur->priority)
-      thread_yield();
-  }
-}
-
 /* 현재 스레드보다 높은 우선순위 스레드가 ready_list에 있으면 CPU 양보 */
 void
 thread_check_preemption (void) {
