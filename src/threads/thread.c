@@ -93,9 +93,8 @@ thread_cmp_donation_priority (const struct list_elem *a, const struct list_elem 
 /* 기본 우선순위(init_priority)와 기부된 우선순위 중 가장 높은 값으로 
    스레드의 유효 우선순위(priority)를 업데이트 */
 void
-refresh_priority (void)
+refresh_priority (struct thread *t) /* t의 우선순위를 새로고침 */
 {
-  struct thread *t = thread_current ();
   int new_priority = t->init_priority;
   
   /* donations 리스트에 기부자가 있다면 */
@@ -246,6 +245,10 @@ thread_create (const char *name, int priority,
   /* Add to run queue. */
   thread_unblock (t);
 
+  // 현재 스레드보다 높은 우선순위의 스레드가 생성되었으면 양보
+  if (t->priority > thread_current ()->priority)
+    thread_yield ();
+
   return tid;
 }
 
@@ -393,6 +396,7 @@ struct thread *cur = thread_current ();
                                          struct thread, elem);
     if (highest->priority > cur->priority)
       thread_yield();
+  }
 }
 
 /* Returns the current thread's priority. */
