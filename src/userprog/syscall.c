@@ -52,20 +52,19 @@ syscall_handler (struct intr_frame *f)
   
   switch (syscall_no)
     {
-    case SYS_HALT: //SYS_HALT와 일치하면, 이 시스템 콜 처리
+    case SYS_HALT: //SYS_HALT와 일치하면, 이 시스템 콜 처리 (추가 인자 없음)
       shutdown_power_off(); //시뮬레이션된 Pintos 시스템을 종료
       break;
 
-    case SYS_EXIT:
-      /* void exit (int status) */
+    case SYS_EXIT: //SYS_EXIT와 일치하면, 이 시스템 콜 처리
       // 2. 인자 1 (status)의 주소 유효성 검사 (f->esp + 4)
-      check_user_vaddr(f->esp + 4);
+      check_user_vaddr(f->esp + 4); 
       status = *(int *)(f->esp + 4);
 
       // 프로세스 종료 메시지 출력 및 종료
-      thread_current()->exit_status = status;
-      printf("%s: exit(%d)\n", thread_current()->name, status);
-      thread_exit();
+      thread_current()->exit_status = status; //종료 상태 저장
+      printf("%s: exit(%d)\n", thread_current()->name, status); //종료 메시지 출력
+      thread_exit(); //프로세스 종료료
       break;
 
     case SYS_EXEC:
