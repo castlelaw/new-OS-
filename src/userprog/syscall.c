@@ -67,22 +67,21 @@ syscall_handler (struct intr_frame *f)
       thread_exit(); //프로세스 종료료
       break;
 
-    case SYS_EXEC:
-      /* pid_t exec (const char *cmd_line) */
+    case SYS_EXEC: //SYS_EXEC와 일치하면, 이 시스템 콜 처리
       // 2. 인자 1 (cmd_line 주소)의 주소 유효성 검사 (f->esp + 4)
-      check_user_vaddr(f->esp + 4);
+      check_user_vaddr(f->esp + 4); //포인터가 저장된 주소 유효성 검사
       cmd_line = *(const char **)(f->esp + 4);
 
       // 3. cmd_line 문자열의 시작 주소 유효성 검사
-      check_user_vaddr(cmd_line);
+      check_user_vaddr(cmd_line); 
 
       // 파일 시스템 접근 동기화
-      lock_acquire(&filesys_lock);
-      tid_t tid = process_execute(cmd_line);
-      lock_release(&filesys_lock);
+      lock_acquire(&filesys_lock); //락 획득
+      tid_t tid = process_execute(cmd_line); //프로세스 실행
+      lock_release(&filesys_lock); //락 해제
 
       // 반환 값 설정
-      f->eax = tid;
+      f->eax = tid; //(EAX 레지스터 사용하여 전달)
       break;
       
     default:
