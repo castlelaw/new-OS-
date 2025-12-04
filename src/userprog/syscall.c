@@ -52,9 +52,8 @@ syscall_handler (struct intr_frame *f)
   
   switch (syscall_no)
     {
-    case SYS_HALT:
-      /* void halt (void) */
-      shutdown_power_off();
+    case SYS_HALT: //SYS_HALT와 일치하면, 이 시스템 콜 처리
+      shutdown_power_off(); //시뮬레이션된 Pintos 시스템을 종료
       break;
 
     case SYS_EXIT:
