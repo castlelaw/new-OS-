@@ -18,6 +18,10 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
+#define MAX_ARGS 32          /* 허용할 최대 인자 개수 */
+
+static void setup_stack_arguments (void **esp, int argc, char *argv[]);
+
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
 
@@ -31,38 +35,88 @@ process_execute (const char *file_name)
   char *fn_copy;
   tid_t tid;
 
-  /* Make a copy of FILE_NAME.
-     Otherwise there's a race between the caller and load(). */
+  /* 전체 명령행 문자열(file_name)을 복사해 자식에게 넘길 버퍼 생성 */
   fn_copy = palloc_get_page (0);
   if (fn_copy == NULL)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
 
-  /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+  /* 스레드 이름으로 쓸 순수 프로그램 이름만 따로 추출 */
+  char prog_name[16];                /* pintos 파일 이름 제한이 14자라서 16이면 충분 */
+  strlcpy (prog_name, file_name, sizeof prog_name);
+
+  char *save_ptr;
+  char *token = strtok_r (prog_name, " ", &save_ptr);
+  if (token == NULL)
+    {
+      palloc_free_page (fn_copy);
+      return TID_ERROR;
+    }
+
+  /* exec-missing 대응: 실행 파일이 실제로 존재하는지 한 번 확인 */
+  struct file *f = filesys_open (token);
+  if (f == NULL)
+    {
+      palloc_free_page (fn_copy);
+      return TID_ERROR;     /* 파일 없으면 -1 리턴 */
+    }
+  file_close (f);
+
+  /* 새 스레드 생성
+     - 스레드 이름: 실행 파일 이름(token)
+     - aux: 전체 cmd line 문자열(fn_copy) */
+  tid = thread_create (token, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
-    palloc_free_page (fn_copy); 
+    palloc_free_page (fn_copy);
+
   return tid;
 }
+
 
 /* A thread function that loads a user process and starts it
    running. */
 static void
 start_process (void *file_name_)
 {
-  char *file_name = file_name_;
+  char *cmd_line = file_name_;   /* 전체 명령행 문자열 */
   struct intr_frame if_;
   bool success;
 
-  /* Initialize interrupt frame and load executable. */
-  memset (&if_, 0, sizeof if_);
-  if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
-  if_.cs = SEL_UCSEG;
-  if_.eflags = FLAG_IF | FLAG_MBS;
-  success = load (file_name, &if_.eip, &if_.esp);
+  /* 1. cmd_line을 공백 기준으로 잘라 argv[]에 저장 */
+  char *argv[MAX_ARGS];
+  int argc = 0;
+
+  char *save_ptr;
+  char *token = strtok_r (cmd_line, " ", &save_ptr);
+  while (token != NULL && argc < MAX_ARGS)
+    {
+      argv[argc++] = token;
+      token = strtok_r (NULL, " ", &save_ptr);
+    }
+
+  /* 최소한 실행 파일 이름은 있어야 함 */
+  if (argc == 0)
+    success = false;
+  else
+    {
+      /* 2. intr_frame 초기화 및 load() 호출 */
+      memset (&if_, 0, sizeof if_);
+      if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
+      if_.cs = SEL_UCSEG;
+      if_.eflags = FLAG_IF | FLAG_MBS;
+
+      /* argv[0] = 실행 파일 이름 */
+      success = load (argv[0], &if_.eip, &if_.esp);
+
+      /* 3. load 성공 시, 스택에 argc/argv 세팅 */
+      if (success)
+        setup_stack_arguments (&if_.esp, argc, argv);
+    }
+
+  /* aux로 넘겼던 cmd_line 페이지 해제 */
+  palloc_free_page (cmd_line);
 
   /* If load failed, quit. */
-  palloc_free_page (file_name);
   if (!success) 
     thread_exit ();
 
@@ -72,9 +126,13 @@ start_process (void *file_name_)
      arguments on the stack in the form of a `struct intr_frame',
      we just point the stack pointer (%esp) to our stack frame
      and jump to it. */
-  asm volatile ("movl %0, %%esp; jmp intr_exit" : : "g" (&if_) : "memory");
+  asm volatile ("movl %0, %%esp; jmp intr_exit"
+                : 
+                : "g" (&if_) 
+                : "memory");
   NOT_REACHED ();
 }
+
 
 /* Waits for thread TID to die and returns its exit status.  If
    it was terminated by the kernel (i.e. killed due to an
@@ -88,8 +146,14 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
-  return -1;
+  /* 2-2에서 제대로 구현할 것.
+     지금은 자식이 끝날 때까지 무한히 양보만 하도록 둔다. */
+  while (true)
+    thread_yield ();
+
+  return -1;   /* 실제로 도달하지 않음 */
 }
+
 
 /* Free the current process's resources. */
 void
@@ -437,7 +501,7 @@ setup_stack (void **esp)
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success)
-        *esp = PHYS_BASE - 12;
+        *esp = PHYS_BASE;
       else
         palloc_free_page (kpage);
     }
@@ -453,6 +517,58 @@ setup_stack (void **esp)
    with palloc_get_page().
    Returns true on success, false if UPAGE is already mapped or
    if memory allocation fails. */
+
+static void
+setup_stack_arguments (void **esp, int argc, char *argv[])
+{
+  uint8_t *sp = *esp;
+  void *arg_addr[MAX_ARGS];
+
+  /* 1. 문자열들을 스택에 역순으로 복사 */
+  for (int i = argc - 1; i >= 0; i--)
+    {
+      int len = strlen (argv[i]) + 1;   /* '\0' 포함 길이 */
+      sp -= len;
+      memcpy (sp, argv[i], len);
+      arg_addr[i] = sp;                 /* 나중에 argv 포인터로 쓸 주소 */
+    }
+
+  /* 2. word alignment (4바이트 정렬) 맞추기 */
+  while ((uint32_t) sp % 4 != 0)
+    {
+      sp--;
+      *sp = 0;
+    }
+
+  /* 3. argv[argc] == NULL용 sentinel */
+  sp -= sizeof (void *);
+  *(void **) sp = NULL;
+
+  /* 4. argv[i] 포인터들 역순으로 push */
+  for (int i = argc - 1; i >= 0; i--)
+    {
+      sp -= sizeof (void *);
+      *(void **) sp = arg_addr[i];
+    }
+
+  /* 5. 이제 sp는 argv[0] 포인터가 저장된 배열의 시작 주소
+        => 그 주소를 다시 한 번 스택에 push (char **argv) */
+  void *argv_addr = sp;
+  sp -= sizeof (void *);
+  *(void **) sp = argv_addr;
+
+  /* 6. argc push */
+  sp -= sizeof (int);
+  *(int *) sp = argc;
+
+  /* 7. fake return address push (사용되지 않지만 관례상 0) */
+  sp -= sizeof (void *);
+  *(void **) sp = 0;
+
+  /* 8. 최종 esp 갱신 */
+  *esp = sp;
+}
+
 static bool
 install_page (void *upage, void *kpage, bool writable)
 {
