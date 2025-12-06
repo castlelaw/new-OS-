@@ -17,6 +17,7 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "userprog/syscall.h"
 
 #define MAX_ARGS 32          /* 허용할 최대 인자 개수 */
 
