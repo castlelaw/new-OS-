@@ -36,9 +36,9 @@ process_execute (const char *file_name)
   char *fn_copy;
   tid_t tid;
 
-  /* 전체 명령행 문자열(file_name)을 복사해 자식에게 넘길 버퍼 생성 */
+  /* 전체 명령행 문자열(file_name)을 복사해 자식에게 넘길 버퍼 생성 (커널공간과 사용자 공간 분리)*/
   fn_copy = palloc_get_page (0);
-  if (fn_copy == NULL)
+  if (fn_copy == NULL) // 오류 검사
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
 
