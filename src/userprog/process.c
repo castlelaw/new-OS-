@@ -85,9 +85,9 @@ start_process (void *file_name_)
 
   /* 1. cmd_line을 공백 기준으로 잘라 argv[]에 저장 */
   char *argv[MAX_ARGS];
-  int argc = 0;
+  int argc = 0; //인자의 수
 
-  char *save_ptr;
+  char *save_ptr; // strtok_r 함수의 내부 상태(다음 토큰 탐색 위치)를 저장하는 포인터
   char *token = strtok_r (cmd_line, " ", &save_ptr);
   while (token != NULL && argc < MAX_ARGS)
     {
@@ -102,9 +102,9 @@ start_process (void *file_name_)
     {
       /* 2. intr_frame 초기화 및 load() 호출 */
       memset (&if_, 0, sizeof if_);
-      if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
+      if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG; //사용자 모드(Ring 3) 권한임을 명시
       if_.cs = SEL_UCSEG;
-      if_.eflags = FLAG_IF | FLAG_MBS;
+      if_.eflags = FLAG_IF | FLAG_MBS; //레지스터를 인터럽트 허용 및 필수 설정
 
       /* argv[0] = 실행 파일 이름 */
       success = load (argv[0], &if_.eip, &if_.esp);
