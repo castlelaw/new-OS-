@@ -58,7 +58,7 @@ process_execute (const char *file_name)
   struct file *f = filesys_open (token);
   if (f == NULL)
     {
-      palloc_free_page (fn_copy);
+      palloc_free_page (fn_copy); //메모리 해제
       return TID_ERROR;     /* 파일 없으면 -1 리턴 */
     }
   file_close (f);
