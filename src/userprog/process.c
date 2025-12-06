@@ -538,7 +538,7 @@ setup_stack_arguments (void **esp, int argc, char *argv[])
   while ((uint32_t) sp % 4 != 0)
     {
       sp--;
-      *sp = 0;
+      *sp = 0; //패딩 바이트
     }
 
   /* 3. argv[argc] == NULL용 sentinel */
@@ -552,13 +552,13 @@ setup_stack_arguments (void **esp, int argc, char *argv[])
       *(void **) sp = arg_addr[i];
     }
 
-  /* 5. 이제 sp는 argv[0] 포인터가 저장된 배열의 시작 주소
+  /* 5. 이제 sp는 argv[0] 포인터가 저장된 배열의 시작 주소(두 번째 인자)
         => 그 주소를 다시 한 번 스택에 push (char **argv) */
   void *argv_addr = sp;
   sp -= sizeof (void *);
   *(void **) sp = argv_addr;
 
-  /* 6. argc push */
+  /* 6. argc push(첫 번째 인자) */
   sp -= sizeof (int);
   *(int *) sp = argc;
 
