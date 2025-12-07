@@ -147,10 +147,6 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
-  /* 2-2에서 제대로 구현할 것.
-     지금은 자식이 끝날 때까지 무한히 양보만 하도록 둔다. */
-  while (true)
-    thread_yield ();
 
   return -1;   /* 실제로 도달하지 않음 */
 }
