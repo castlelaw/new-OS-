@@ -69,6 +69,30 @@ syscall_handler (struct intr_frame *f)
       thread_exit(); //프로세스 종료료
       break;
 
+    case SYS_WRITE:
+      check_user_vaddr(f->esp + 4); //fd 주소 유효성 검사
+      check_user_vaddr(f->esp + 8); //buffer 주소 유효성 검사
+      check_user_vaddr(f->esp + 12); //size 주소 유효성 검사
+
+      {
+        int fd = *(int *)(f->esp + 4);
+        const void *buffer = *(const void **)(f->esp + 8);
+        unsigned size = *(unsigned *)(f->esp + 12);
+
+        check_user_vaddr(buffer); //버퍼 포인터 유효성 검사
+
+        if (fd == 1) // 표준 출력
+          {
+            putbuf(buffer, size); //콘솔에 버퍼 출력
+            f->eax = size; //쓰기 성공한 바이트 수 반환
+          }
+        else // 지원하지 않는 파일 디스크립터
+          {
+            f->eax = 0; //오류 반환
+          }
+      }
+      break;
+
     case SYS_EXEC: //SYS_EXEC와 일치하면, 이 시스템 콜 처리
       // 2. 인자 1 (cmd_line 주소)의 주소 유효성 검사 (f->esp + 4)
       check_user_vaddr(f->esp + 4); //포인터가 저장된 주소 유효성 검사
