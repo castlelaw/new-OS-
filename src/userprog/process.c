@@ -148,6 +148,11 @@ int
 process_wait (tid_t child_tid UNUSED) 
 {
 
+  int i;
+  for (i=0; i< 10000000; i++); //대기 시간 벌기용
+  {
+      thread_yield ();
+  }
   return -1;   /* 실제로 도달하지 않음 */
 }
 
