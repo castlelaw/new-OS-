@@ -8,7 +8,7 @@
 #include "userprog/process.h" 
 #include "threads/synch.h"
 #include "userprog/pagedir.h"
-#include "devices/console.h"
+#include "console.h"
 
 static void check_user_vaddr (const void *vaddr);
 
