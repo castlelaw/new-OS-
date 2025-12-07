@@ -17,6 +17,15 @@ static struct lock filesys_lock;
 
 static void syscall_handler (struct intr_frame *);
 
+/* 공통 종료 헬퍼: exit_status 설정 + thread_exit */
+static void
+exit_process (int status)
+{
+  struct thread *cur = thread_current ();
+  cur->exit_status = status;
+  thread_exit ();
+}
+
 void
 syscall_init (void) 
 {
@@ -31,14 +40,10 @@ check_user_vaddr (const void *vaddr)
   struct thread *cur = thread_current();
   // 널 포인터이거나, 커널 가상 주소 공간에 있거나, 유효한 사용자 주소가 아닌 경우
   if (vaddr == NULL || !is_user_vaddr(vaddr))
-    goto FAIL;
+    exit_process(-1);
   if(pagedir_get_page (cur->pagedir, vaddr) == NULL)
-    goto FAIL;
-  return;
-FAIL:
+    exit_process(-1);
 
-  printf("%s: exit(%d)\n", cur->name, -1);
-  thread_exit();
 }
 
 static void
@@ -62,11 +67,7 @@ syscall_handler (struct intr_frame *f)
       // 2. 인자 1 (status)의 주소 유효성 검사 (f->esp + 4)
       check_user_vaddr(f->esp + 4); 
       status = *(int *)(f->esp + 4);
-
-      // 프로세스 종료 메시지 출력 및 종료
-    
-      printf("%s: exit(%d)\n", thread_current()->name, status); //종료 메시지 출력
-      thread_exit(); //프로세스 종료료
+      exit_process (status); //프로세스 종료료
       break;
 
     case SYS_WRITE:
@@ -112,9 +113,7 @@ syscall_handler (struct intr_frame *f)
       
     default:
       // 정의되지 않은 시스템 콜은 프로세스를 종료
-    
-      printf("%s: exit(%d)\n", thread_current()->name, -1);
-      thread_exit();
+      exit_process(-1);
       break;
     }
 }
