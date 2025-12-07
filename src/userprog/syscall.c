@@ -7,6 +7,8 @@
 #include "devices/shutdown.h"
 #include "userprog/process.h" 
 #include "threads/synch.h"
+#include "userprog/pagedir.h"
+#include "devices/console.h"
 
 static void check_user_vaddr (const void *vaddr);
 
@@ -26,17 +28,17 @@ syscall_init (void)
 static void
 check_user_vaddr (const void *vaddr)
 {
+  struct thread *cur = thread_current();
   // 널 포인터이거나, 커널 가상 주소 공간에 있거나, 유효한 사용자 주소가 아닌 경우
-  if (!vaddr || !is_user_vaddr(vaddr) || vaddr < (void *) 0x08048000) 
-  {
-    // 잘못된 인자 처리: 프로세스를 종료하고 -1 반환
-    thread_current()->exit_status = -1; 
-    
-    // 프로세스 종료 메시지 출력
-    printf("%s: exit(%d)\n", thread_current()->name, -1);
-
-    thread_exit();
-  }
+  if (vaddr == Null || !is_user_vaddr(vaddr))
+    goto FAIL;
+  if(pagedir_get_page (cur->pagedir, vaddr) == NULL)
+    goto FAIL;
+  return;
+FAIL:
+  cur->exit_status = -1; 
+  printf("%s: exit(%d)\n", cur->name, -1);
+  thread_exit();
 }
 
 static void
