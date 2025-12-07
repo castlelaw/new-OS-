@@ -30,13 +30,13 @@ check_user_vaddr (const void *vaddr)
 {
   struct thread *cur = thread_current();
   // 널 포인터이거나, 커널 가상 주소 공간에 있거나, 유효한 사용자 주소가 아닌 경우
-  if (vaddr == Null || !is_user_vaddr(vaddr))
+  if (vaddr == NULL || !is_user_vaddr(vaddr))
     goto FAIL;
   if(pagedir_get_page (cur->pagedir, vaddr) == NULL)
     goto FAIL;
   return;
 FAIL:
-  cur->exit_status = -1; 
+
   printf("%s: exit(%d)\n", cur->name, -1);
   thread_exit();
 }
@@ -64,7 +64,7 @@ syscall_handler (struct intr_frame *f)
       status = *(int *)(f->esp + 4);
 
       // 프로세스 종료 메시지 출력 및 종료
-      thread_current()->exit_status = status; //종료 상태 저장
+    
       printf("%s: exit(%d)\n", thread_current()->name, status); //종료 메시지 출력
       thread_exit(); //프로세스 종료료
       break;
@@ -112,7 +112,7 @@ syscall_handler (struct intr_frame *f)
       
     default:
       // 정의되지 않은 시스템 콜은 프로세스를 종료
-      thread_current()->exit_status = -1;
+    
       printf("%s: exit(%d)\n", thread_current()->name, -1);
       thread_exit();
       break;
