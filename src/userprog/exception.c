@@ -153,7 +153,7 @@ page_fault (struct intr_frame *f)
      which fault_addr refers. */
   if (user)
     {
-      // 사용자 컨텍스트에서 발생한 페이지 폴트는 잘못된 접근으로 간주하고 프로세스 종료
+      // 사용자 모드에서 발생하거나 사용자 주소 접근하는 동안 발생한 페이지 폴트는 잘못된 접근으로 간주하고 프로세스 종료
       
       // 기존 디버깅 메시지 제거: 
       // printf ("Page fault at %p: ... \n", ...);
