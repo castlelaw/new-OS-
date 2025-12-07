@@ -86,7 +86,7 @@ kill (struct intr_frame *f)
     case SEL_UCSEG:
       /* User's code segment, so it's a user exception, as we
          expected.  Kill the user process.  */
-      printf ("%s: dying due to interrupt %#04x (%s).\n",
+      // printf ("%s: dying due to interrupt %#04x (%s).\n",
               thread_name (), f->vec_no, intr_name (f->vec_no));
       intr_dump_frame (f);
       thread_exit (); 
@@ -151,11 +151,24 @@ page_fault (struct intr_frame *f)
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to
      which fault_addr refers. */
-  printf ("Page fault at %p: %s error %s page in %s context.\n",
-          fault_addr,
-          not_present ? "not present" : "rights violation",
-          write ? "writing" : "reading",
-          user ? "user" : "kernel");
-  kill (f);
-}
+  if (user)
+    {
+      // 사용자 컨텍스트에서 발생한 페이지 폴트는 잘못된 접근으로 간주하고 프로세스 종료
+      
+      // 기존 디버깅 메시지 제거: 
+      // printf ("Page fault at %p: ... \n", ...);
 
+      kill (f); // thread_exit() 호출
+
+    }
+  else
+    {
+      // 커널 모드에서 발생한 페이지 폴트는 버그입니다.
+      printf ("Page fault at %p: %s error %s page in %s context.\n",
+              fault_addr,
+              (f->error_code & PF_P) == 0 ? "not present" : "rights violation",
+              (f->error_code & PF_W) != 0 ? "writing" : "reading",
+              user ? "user" : "kernel");
+      kill (f);
+    }
+}
