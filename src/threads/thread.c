@@ -648,7 +648,12 @@ init_thread (struct thread *t, const char *name, int priority)
   
   t->wakeup_tick = 0; /* 타이머 sleep용 필드 초기화*/
     /*donation 관련 필드 초기화 */
-  
+    
+#ifdef USERPROG
+  t->pagedir = NULL;     /* 페이지 디렉터리 초기화 */
+  t->exit_status = -1;   /* 기본 종료 코드: -1 */
+#endif  
+
   if (thread_mlfqs) {
     t->nice = 0;           /* [추가됨] 기본 nice 값 */
     t->recent_cpu = 0;
