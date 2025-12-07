@@ -86,10 +86,11 @@ kill (struct intr_frame *f)
     case SEL_UCSEG:
       /* User's code segment, so it's a user exception, as we
          expected.  Kill the user process.  */
-      // printf ("%s: dying due to interrupt %#04x (%s).\n",
+      printf ("%s: dying due to interrupt %#04x (%s).\n",
               thread_name (), f->vec_no, intr_name (f->vec_no));
       intr_dump_frame (f);
       thread_exit (); 
+      break;
 
     case SEL_KCSEG:
       /* Kernel's code segment, which indicates a kernel bug.
