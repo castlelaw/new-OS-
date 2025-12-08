@@ -50,83 +50,76 @@ check_user_vaddr (const void *vaddr)
 }
 
 static void
-syscall_handler (struct intr_frame *f) 
+syscall_handler (struct intr_frame *f)
 {
-  // 1. 스택 포인터(f->esp) 및 시스템 콜 번호의 주소 유효성 검사
-  check_user_vaddr(f->esp);
+  int *esp = f->esp;   /* 유저 스택 포인터 */
+  int syscall_no;
 
-  // 시스템 콜 번호 읽기
-  int syscall_no = *(int *)f->esp;
-  printf ("[DEBUG] syscall %d 발생\n", syscall_no);
+  /* syscall 번호가 있는 주소부터 유효성 검사 */
+  check_user_vaddr (esp);
+  syscall_no = esp[0];
 
   int status;
   const char *cmd_line;
-  
+
   switch (syscall_no)
     {
-    case SYS_HALT: //SYS_HALT와 일치하면, 이 시스템 콜 처리 (추가 인자 없음)
-      shutdown_power_off(); //시뮬레이션된 Pintos 시스템을 종료
+    case SYS_HALT:
+      shutdown_power_off ();
       break;
 
-    case SYS_EXIT: //SYS_EXIT와 일치하면, 이 시스템 콜 처리
-      // 2. 인자 1 (status)의 주소 유효성 검사 (f->esp + 4)
-      check_user_vaddr(f->esp + 4); 
-      status = *(int *)(f->esp + 4);
-      exit_process (status); //프로세스 종료료
+    case SYS_EXIT:
+      /* 인자 1: status = esp[1] */
+      check_user_vaddr (&esp[1]);
+      status = esp[1];
+      exit_process (status);
+      break;
+
+    case SYS_EXEC:
+      /* 인자 1: cmd_line 포인터 = esp[1] */
+      check_user_vaddr (&esp[1]);                /* 포인터가 있는 곳 */
+      cmd_line = (const char *) esp[1];          /* 실제 문자열 주소 */
+      check_user_vaddr (cmd_line);               /* 문자열 시작 주소 */
+
+      lock_acquire (&filesys_lock);
+      f->eax = process_execute (cmd_line);       /* 자식 tid */
+      lock_release (&filesys_lock);
       break;
 
     case SYS_WRITE:
-      printf ("[DEBUG] SYS_WRITE 진입\n");
-    {
-      check_user_vaddr(f->esp + 4); //fd 주소 유효성 검사
-      check_user_vaddr(f->esp + 8); //buffer 주소 유효성 검사
-      check_user_vaddr(f->esp + 12); //size 주소 유효성 검사
+      {
+        /* 인자 1,2,3: fd, buffer, size */
+        check_user_vaddr (&esp[1]);      /* fd 가 올라있는 주소 */
+        check_user_vaddr (&esp[2]);      /* buffer 포인터가 있는 주소 */
+        check_user_vaddr (&esp[3]);      /* size 값이 있는 주소 */
 
-      
-        int fd = *(int *)(f->esp + 4);
-        const void *buffer = *(const void **)(f->esp + 8);
-        unsigned size = *(unsigned *)(f->esp + 12);
+        int fd = esp[1];
+        const void *buffer = (const void *) esp[2];
+        unsigned size = (unsigned) esp[3];
 
+        /* 버퍼의 앞/뒤만 확인 (너무 과하게 검사 X) */
         if (buffer == NULL)
-          exit_process(-1);
-        for (unsigned i = 0; i < size; i++)
-          check_user_vaddr(buffer + i); //버퍼 포인터 유효성 검사
-        printf ("[DEBUG] fd=%d, size=%u\n", fd, size);
+          exit_process (-1);
 
-        
-        if (fd == STDOUT_FILENO) //표준 출력
-        {
-            putbuf(buffer, size); //콘솔에 버퍼 출력
-            f->eax = size; //쓰기 성공한 바이트 수 반환
-        }
+        check_user_vaddr (buffer);                 /* 첫 바이트 */
+        if (size > 0)
+          check_user_vaddr ((const uint8_t *)buffer + size - 1);  /* 마지막 바이트 */
+
+        if (fd == 1)       /* STDOUT_FILENO */
+          {
+            putbuf (buffer, size);
+            f->eax = size;
+          }
         else
-        {
-            exit_process(-1); //지원하지 않는 파일 디스크립터는 프로세스 종료
-        }
-
-    }
-    break;
-
-    case SYS_EXEC: //SYS_EXEC와 일치하면, 이 시스템 콜 처리
-      // 2. 인자 1 (cmd_line 주소)의 주소 유효성 검사 (f->esp + 4)
-      check_user_vaddr(f->esp + 4); //포인터가 저장된 주소 유효성 검사
-      cmd_line = *(const char **)(f->esp + 4);
-
-      // 3. cmd_line 문자열의 시작 주소 유효성 검사
-      check_user_vaddr(cmd_line); 
-
-      // 파일 시스템 접근 동기화
-      lock_acquire(&filesys_lock); //락 획득
-      tid_t tid = process_execute(cmd_line); //프로세스 실행
-      lock_release(&filesys_lock); //락 해제
-
-      // 반환 값 설정
-      f->eax = tid; //(EAX 레지스터 사용하여 전달)
+          {
+            /* 아직 다른 fd 는 지원 안 함: 0 반환 정도로 충분 */
+            f->eax = 0;
+          }
+      }
       break;
-      
+
     default:
-      // 정의되지 않은 시스템 콜은 프로세스를 종료
-      exit_process(-1);
+      exit_process (-1);
       break;
     }
 }
