@@ -57,6 +57,8 @@ syscall_handler (struct intr_frame *f)
 
   // 시스템 콜 번호 읽기
   int syscall_no = *(int *)f->esp;
+  printf ("[DEBUG] syscall %d 발생\n", syscall_no);
+
   int status;
   const char *cmd_line;
   
@@ -74,6 +76,7 @@ syscall_handler (struct intr_frame *f)
       break;
 
     case SYS_WRITE:
+      printf ("[DEBUG] SYS_WRITE 진입\n");
     {
       check_user_vaddr(f->esp + 4); //fd 주소 유효성 검사
       check_user_vaddr(f->esp + 8); //buffer 주소 유효성 검사
@@ -88,6 +91,8 @@ syscall_handler (struct intr_frame *f)
           exit_process(-1);
         for (unsigned i = 0; i < size; i++)
           check_user_vaddr(buffer + i); //버퍼 포인터 유효성 검사
+        printf ("[DEBUG] fd=%d, size=%u\n", fd, size);
+
         
         if (fd == STDOUT_FILENO) //표준 출력
         {
