@@ -137,6 +137,7 @@ syscall_handler (struct intr_frame *f)
       /* 인자 1: status = esp[1] */
       check_user_vaddr (&esp[1]);
       status = esp[1];
+      printf("%s: exit(%d)\n", thread_current()->name, status);
       exit_process (status);
       break;
 
