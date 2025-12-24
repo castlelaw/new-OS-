@@ -209,7 +209,9 @@ thread_tick (void)   // 매 틱마다 인터럽트 컨텍스트에서 호출되�
       update_load_avg_and_recent_cpu();
 
     if (timer_ticks() % 4 == 0)
+      enum intr_level old = intr_disable();
       thread_foreach(thread_update_priority, NULL);
+      intr_set_level(old);
   }
 }
 
@@ -540,6 +542,7 @@ thread_update_priority(struct thread *t,void *aux UNUSED) {
 
 void
 update_load_avg_and_recent_cpu(void) {
+  enum intr_level old = intr_disable();
   int ready_threads = list_size(&ready_list);
   if (thread_current() != idle_thread)
     ready_threads++;
@@ -559,6 +562,7 @@ update_load_avg_and_recent_cpu(void) {
 
     t->recent_cpu = ADD_FP(MULT_FP(coef, t->recent_cpu), INT_TO_FP(t->nice));
     recompute_priority(t);
+    intr_set_level(old);
   }
 }
 /* Idle thread.  Executes when no other thread is ready to run.
