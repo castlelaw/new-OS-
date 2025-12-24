@@ -201,18 +201,23 @@ thread_tick (void)   // 매 틱마다 인터럽트 컨텍스트에서 호출되�
     intr_yield_on_return ();
 
 // MLFQS 스케줄러용 최근 CPU 사용량 및 우선순위 업데이트
-  if (thread_mlfqs) {   // 매 틱마다 최근 CPU 사용량 1 증가
-  if (t != idle_thread)
+  if (thread_mlfqs) {
+   if (t != idle_thread) {
     t->recent_cpu = ADD_FP(t->recent_cpu, INT_TO_FP(1));
+   }
 
-    if (timer_ticks() % TIMER_FREQ == 0)
-      update_load_avg_and_recent_cpu();
+   if (timer_ticks() % TIMER_FREQ == 0) {
+    enum intr_level old = intr_disable();
+    update_load_avg_and_recent_cpu();
+    intr_set_level(old);
+   }
 
-    if (timer_ticks() % 4 == 0)
-      enum intr_level old = intr_disable();
-      thread_foreach(thread_update_priority, NULL);
-      intr_set_level(old);
-  }
+   if (timer_ticks() % 4 == 0) {
+    enum intr_level old = intr_disable();
+    thread_foreach(thread_update_priority, NULL);
+    intr_set_level(old);
+   }
+ }
 }
 
 /* Prints thread statistics. */
