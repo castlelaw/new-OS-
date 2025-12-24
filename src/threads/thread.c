@@ -651,8 +651,11 @@ init_thread (struct thread *t, const char *name, int priority)
     
 #ifdef USERPROG
   t->pagedir = NULL;     /* 페이지 디렉터리 초기화 */
-  t->exit_status = -1;   /* 기본 종료 코드: -1 */
-#endif  
+  t->exit_status = 0;                /* 정상 종료 기본값(원하면 -1로 두고, syscall exit에서 세팅해도 됨) */
+  sema_init (&t->load_sema, 0);       /* 부모가 exec에서 기다릴 세마포어 */
+  t->load_success = false;           /* start_process에서 load 결과를 기록 */
+  t->is_user_process = false;        /* start_process 들어가면 true로 바꿈 */
+#endif 
 
   if (thread_mlfqs) {
     t->nice = 0;           /* [추가됨] 기본 nice 값 */

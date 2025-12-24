@@ -9,6 +9,7 @@
 #include "threads/synch.h"
 #include "userprog/pagedir.h"
 #include "console.h"
+#include "threads/pte.h"
 
 // 페이지 크기 (4KB) 정의
 #define PGSIZE 0x1000 
@@ -67,29 +68,30 @@ check_user_vaddr (const void *vaddr)
 static void
 check_user_buffer (const void *buffer, unsigned size)
 {
-  const uint8_t *cur_addr;
-
   if (buffer == NULL)
     exit_process(-1);
 
-  // 버퍼의 시작 주소를 먼저 검사
-  check_user_vaddr (buffer);
-  
-  // 버퍼가 끝나는 주소까지 4KB 페이지 단위로 순회하며 검사 (중간 페이지 검사)
-  for (cur_addr = (const uint8_t *)buffer; 
-       cur_addr < (const uint8_t *)buffer + size; 
-       cur_addr += PGSIZE)
-  {
-    check_user_vaddr (cur_addr);
+  /* size==0이면 시작 주소만이라도 유효한지 확인 */
+  if (size == 0) {
+    check_user_vaddr(buffer);
+    return;
   }
-  
-  // 버퍼의 마지막 바이트 주소만 따로 검사 
-  if (size > 0)
+
+  const uint8_t *start = (const uint8_t *) buffer;
+  const uint8_t *end   = start + size - 1;
+
+  /* overflow 방지: end가 start보다 작아지면 wrap-around */
+  if (end < start)
+    exit_process(-1);
+
+  /* start가 속한 페이지부터 end가 속한 페이지까지 페이지 단위로 검사 */
+  for (uint8_t *p = pg_round_down((void *) start);
+       p <= (uint8_t *) end;
+       p += PGSIZE)
   {
-    check_user_vaddr ((const uint8_t *)buffer + size - 1);
+    check_user_vaddr(p);
   }
 }
-
 // 널 종료 문자열 전체의 유효성 검사를 수행하는 함수
 /*
  * 널 종료 문자열 str의 모든 문자가 유효한 사용자 주소 공간에 매핑되어 있는지 확인.
@@ -116,13 +118,12 @@ check_user_string (const char *str)
 static void
 syscall_handler (struct intr_frame *f)
 {
-  // 스택 포인터는 링 3에서 링 0으로 전환 시 f->esp에 저장된다.
-  int *esp = f->esp;  /* 유저 스택 포인터 */
-  int syscall_no;
+  int *esp = f->esp;
 
-  /* 시스템 콜 번호가 있는 주소부터 유효성 검사 */
-  check_user_vaddr (esp);
-  syscall_no = esp[0];
+ 
+  check_user_buffer(esp, 4);
+
+  int syscall_no = esp[0];
 
   int status;
   const char *cmd_line;
@@ -137,7 +138,8 @@ syscall_handler (struct intr_frame *f)
       /* 인자 1: status = esp[1] */
       check_user_vaddr (&esp[1]);
       status = esp[1];
-      printf("%s: exit(%d)\n", thread_current()->name, status);
+      if (thread_current()->is_user_process)
+        printf("%s: exit(%d)\n", thread_current()->name, status);
       exit_process (status);
       break;
 
@@ -178,7 +180,7 @@ syscall_handler (struct intr_frame *f)
         else
           {
             /* 파일 시스템 관련 처리가 필요. (현재는 지원하지 않음) */
-            f->eax = 0;
+            f->eax = -1;
           }
       }
       break;

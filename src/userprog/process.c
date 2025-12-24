@@ -22,6 +22,23 @@
 #define MAX_ARGS 32          /* 허용할 최대 인자 개수 */
 
 static void setup_stack_arguments (void **esp, int argc, char *argv[]);
+static struct thread *found_child;
+
+static void
+find_thread_by_tid (struct thread *t, void *aux)
+{
+  tid_t target = *(tid_t *) aux;
+  if (t->tid == target)
+    found_child = t;
+}
+
+static struct thread *
+get_thread_by_tid (tid_t tid)
+{
+  found_child = NULL;
+  thread_foreach (find_thread_by_tid, &tid);
+  return found_child;
+}
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -54,21 +71,26 @@ process_execute (const char *file_name)
       return TID_ERROR;
     }
 
-  /* exec-missing 대응: 실행 파일이 실제로 존재하는지 한 번 확인 */
-  struct file *f = filesys_open (token);
-  if (f == NULL)
-    {
-      palloc_free_page (fn_copy); //메모리 해제
-      return TID_ERROR;     /* 파일 없으면 -1 리턴 */
-    }
-  file_close (f);
-
   /* 새 스레드 생성
      - 스레드 이름: 실행 파일 이름(token)
      - aux: 전체 cmd line 문자열(fn_copy) */
   tid = thread_create (token, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
-    palloc_free_page (fn_copy);
+    {
+      palloc_free_page (fn_copy);
+      return TID_ERROR;
+    }
+
+  /* ✅ 자식이 load 완료할 때까지 기다림 */
+  struct thread *child = get_thread_by_tid (tid);
+  if (child == NULL)
+    return TID_ERROR;
+
+  sema_down (&child->load_sema);
+
+  /* ✅ load 실패면 exec는 -1 반환해야 함 */
+  if (!child->load_success)
+    return TID_ERROR;
 
   return tid;
 }
@@ -114,7 +136,12 @@ start_process (void *file_name_)
         setup_stack_arguments (&if_.esp, argc, argv);
     }
 
-  /* aux로 넘겼던 cmd_line 페이지 해제 */
+  thread_current()->is_user_process = true;
+
+  thread_current()->load_success = success;
+  sema_up (&thread_current()->load_sema);
+  
+    /* aux로 넘겼던 cmd_line 페이지 해제 */
   palloc_free_page (cmd_line);
 
   /* If load failed, quit. */
@@ -147,13 +174,7 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
-
-  int i;
-  for (i=0; i< 100000; i++); //대기 시간 벌기용
-  {
-      thread_yield ();
-  }
-  return -1;   /* 실제로 도달하지 않음 */
+  for (;;) thread_yield();
 }
 
 
@@ -162,6 +183,9 @@ void
 process_exit (void)
 {
   struct thread *cur = thread_current ();
+  if (cur->is_user_process && cur->load_success)
+    printf("%s: exit(%d)\n", cur->name, cur->exit_status);
+
   uint32_t *pd = cur->pagedir;
 
   /* Destroy the current process's page directory and switch back

@@ -4,7 +4,8 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
-
+#include <stdbool.h>
+#include "threads/synch.h"
 /* States in a thread's life cycle. */
 enum thread_status
   {
@@ -114,7 +115,11 @@ struct thread
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;               /* Page directory. */
-    int exit_status;                 /* 프로세스 종료 상태 저장 */
+
+    int exit_status;                
+    struct semaphore load_sema;     
+    bool load_success;               
+    bool is_user_process;            
 #endif
 
     /* Owned by thread.c. */
