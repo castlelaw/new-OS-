@@ -16,29 +16,23 @@
 #include "threads/interrupt.h"
 #include "threads/palloc.h"
 #include "threads/thread.h"
+#include "threads/synch.h"
+#include "threads/malloc.h"
 #include "threads/vaddr.h"
 #include "userprog/syscall.h"
 
 #define MAX_ARGS 32          /* 허용할 최대 인자 개수 */
+struct exec_sync {
+  struct semaphore sema;   /* 자식 load 완료 신호 */
+  bool success;            /* load 성공 여부 */
+  tid_t tid;               /* 성공 시 자식 tid */
+};
 
+struct exec_aux {
+  char *cmd_line;          /* palloc page */
+  struct exec_sync *sync;  /* 부모 대기 객체 */
+};
 static void setup_stack_arguments (void **esp, int argc, char *argv[]);
-static struct thread *found_child;
-
-static void
-find_thread_by_tid (struct thread *t, void *aux)
-{
-  tid_t target = *(tid_t *) aux;
-  if (t->tid == target)
-    found_child = t;
-}
-
-static struct thread *
-get_thread_by_tid (tid_t tid)
-{
-  found_child = NULL;
-  thread_foreach (find_thread_by_tid, &tid);
-  return found_child;
-}
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -53,14 +47,14 @@ process_execute (const char *file_name)
   char *fn_copy;
   tid_t tid;
 
-  /* 전체 명령행 문자열(file_name)을 복사해 자식에게 넘길 버퍼 생성 (커널공간과 사용자 공간 분리)*/
+  /* cmd line 복사 */
   fn_copy = palloc_get_page (0);
-  if (fn_copy == NULL) // 오류 검사
+  if (fn_copy == NULL)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
 
-  /* 스레드 이름으로 쓸 순수 프로그램 이름만 따로 추출 */
-  char prog_name[16];                /* pintos 파일 이름 제한이 14자라서 16이면 충분 */
+  /* 스레드 이름용 순수 프로그램 이름 추출 */
+  char prog_name[16];
   strlcpy (prog_name, file_name, sizeof prog_name);
 
   char *save_ptr;
@@ -71,45 +65,60 @@ process_execute (const char *file_name)
       return TID_ERROR;
     }
 
-  /* 새 스레드 생성
-     - 스레드 이름: 실행 파일 이름(token)
-     - aux: 전체 cmd line 문자열(fn_copy) */
-  tid = thread_create (token, PRI_DEFAULT, start_process, fn_copy);
-  if (tid == TID_ERROR)
+  /* ✅ 부모가 기다릴 동기화 객체 */
+  struct exec_sync sync;
+  sema_init (&sync.sema, 0);
+  sync.success = false;
+  sync.tid = TID_ERROR;
+
+  /* ✅ 자식에게 전달할 aux */
+  struct exec_aux *aux = malloc (sizeof *aux);
+  if (aux == NULL)
     {
       palloc_free_page (fn_copy);
       return TID_ERROR;
     }
+  aux->cmd_line = fn_copy;
+  aux->sync = &sync;
 
-  /* ✅ 자식이 load 완료할 때까지 기다림 */
-  struct thread *child = get_thread_by_tid (tid);
-  if (child == NULL)
+  /* 자식 생성 */
+  tid = thread_create (token, PRI_DEFAULT, start_process, aux);
+  if (tid == TID_ERROR)
+    {
+      free (aux);
+      palloc_free_page (fn_copy);
+      return TID_ERROR;
+    }
+
+  /* ✅ 자식 load 완료까지 대기 */
+  sema_down (&sync.sema);
+
+  /* ✅ load 실패면 -1 */
+  if (!sync.success)
     return TID_ERROR;
 
-  sema_down (&child->load_sema);
-
-  /* ✅ load 실패면 exec는 -1 반환해야 함 */
-  if (!child->load_success)
-    return TID_ERROR;
-
-  return tid;
+  return sync.tid;
 }
 
 
 /* A thread function that loads a user process and starts it
    running. */
 static void
-start_process (void *file_name_)
+start_process (void *aux_)
 {
-  char *cmd_line = file_name_;   /* 전체 명령행 문자열 */
+  struct exec_aux *aux = aux_;
+  char *cmd_line = aux->cmd_line;
+  struct exec_sync *sync = aux->sync;
+  free (aux);
+
   struct intr_frame if_;
   bool success;
 
   /* 1. cmd_line을 공백 기준으로 잘라 argv[]에 저장 */
   char *argv[MAX_ARGS];
-  int argc = 0; //인자의 수
+  int argc = 0;
 
-  char *save_ptr; // strtok_r 함수의 내부 상태(다음 토큰 탐색 위치)를 저장하는 포인터
+  char *save_ptr;
   char *token = strtok_r (cmd_line, " ", &save_ptr);
   while (token != NULL && argc < MAX_ARGS)
     {
@@ -117,46 +126,39 @@ start_process (void *file_name_)
       token = strtok_r (NULL, " ", &save_ptr);
     }
 
-  /* 최소한 실행 파일 이름은 있어야 함 */
   if (argc == 0)
     success = false;
   else
     {
-      /* 2. intr_frame 초기화 및 load() 호출 */
       memset (&if_, 0, sizeof if_);
-      if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG; //사용자 모드(Ring 3) 권한임을 명시
+      if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
       if_.cs = SEL_UCSEG;
-      if_.eflags = FLAG_IF | FLAG_MBS; //레지스터를 인터럽트 허용 및 필수 설정
+      if_.eflags = FLAG_IF | FLAG_MBS;
 
-      /* argv[0] = 실행 파일 이름 */
       success = load (argv[0], &if_.eip, &if_.esp);
 
-      /* 3. load 성공 시, 스택에 argc/argv 세팅 */
       if (success)
         setup_stack_arguments (&if_.esp, argc, argv);
     }
 
-  thread_current()->is_user_process = true;
+  /* ✅ 부모에게 load 결과 전달 (성공/실패 상관없이 반드시 up) */
+  if (sync != NULL)
+    {
+      sync->success = success;
+      sync->tid = success ? thread_current ()->tid : TID_ERROR;
+      sema_up (&sync->sema);
+    }
 
-  thread_current()->load_success = success;
-  sema_up (&thread_current()->load_sema);
-  
-    /* aux로 넘겼던 cmd_line 페이지 해제 */
+  /* cmd_line 페이지 해제 */
   palloc_free_page (cmd_line);
 
-  /* If load failed, quit. */
-  if (!success) 
+  /* load 실패면 종료 */
+  if (!success)
     thread_exit ();
 
-  /* Start the user process by simulating a return from an
-     interrupt, implemented by intr_exit (in
-     threads/intr-stubs.S).  Because intr_exit takes all of its
-     arguments on the stack in the form of a `struct intr_frame',
-     we just point the stack pointer (%esp) to our stack frame
-     and jump to it. */
   asm volatile ("movl %0, %%esp; jmp intr_exit"
-                : 
-                : "g" (&if_) 
+                :
+                : "g" (&if_)
                 : "memory");
   NOT_REACHED ();
 }
@@ -183,8 +185,6 @@ void
 process_exit (void)
 {
   struct thread *cur = thread_current ();
-  if (cur->is_user_process && cur->load_success)
-    printf("%s: exit(%d)\n", cur->name, cur->exit_status);
 
   uint32_t *pd = cur->pagedir;
 
