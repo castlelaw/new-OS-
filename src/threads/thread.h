@@ -5,11 +5,9 @@
 #include <list.h>
 #include <stdint.h>
 #include <stdbool.h>
-#include "threads/synch.h"
+#include "threads/synch.h" /* [P2-1 FIX] Semaphore */
 
-/* [P2-1 FIX] Circular dependency 방지용 전방 선언 */
-struct semaphore;
-struct file; /* 실행 파일 포인터 저장을 위해 필요 */
+struct file; 
 
 enum thread_status
   {
@@ -26,6 +24,14 @@ typedef int tid_t;
 #define PRI_DEFAULT 31
 #define PRI_MAX 63
 
+/* [P2-1 FIX] 자식 프로세스 정보를 담는 구조체 */
+struct child_process {
+    tid_t tid;                 /* 자식 스레드 ID */
+    int exit_status;           /* 자식 종료 코드 */
+    struct semaphore wait_sema;/* 자식 종료 대기용 세마포어 */
+    struct list_elem elem;     /* 부모의 children 리스트 연결용 */
+};
+
 struct thread
   {
     tid_t tid;
@@ -40,21 +46,17 @@ struct thread
     struct list_elem elem;
 
 #ifdef USERPROG
-    /* Owned by userprog/process.c. */
-    uint32_t *pagedir;          /* Page directory. */
+    uint32_t *pagedir;
+    int exit_status;           /* 나의 종료 코드 */
+    bool load_success;
+    struct file *bin_file;     /* 실행 중인 파일 */
 
-    /* [P2-1 FIX] Process Control Fields */
-    int exit_status;            /* exit(status)로 전달된 값 */
-    bool exited;                /* 정상적으로 exit 호출되었는지 여부 */
-    bool load_success;          /* 프로그램 로드 성공 여부 (실패 시 종료 메시지 출력 안 함) */
-
-    /* [P2-1 FIX] Executable file pointer for deny_write */
-    struct file *bin_file;      /* 현재 실행 중인 파일 (종료 시 close 필요) */
-    struct semaphore wait_sema;
+    /* [P2-1 FIX] 자식 관리 필드 */
+    struct list children;      /* 자식 프로세스 목록 (struct child_process) */
+    struct child_process *cp;  /* 나 자신의 메타데이터 포인터 (부모가 만들어준 것) */
 #endif
 
-    /* Owned by thread.c. */
-    unsigned magic;             /* Detects stack overflow. */
+    unsigned magic;
   };
 
 extern bool thread_mlfqs;
@@ -74,8 +76,6 @@ void thread_unblock (struct thread *);
 struct thread *thread_current (void);
 tid_t thread_tid (void);
 const char *thread_name (void);
-
-struct thread *get_thread (tid_t tid);
 
 void thread_exit (void) NO_RETURN;
 void thread_yield (void);

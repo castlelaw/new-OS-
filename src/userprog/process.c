@@ -25,8 +25,6 @@ extern struct lock filesys_lock;
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
 static bool push_arguments (void **esp, const char *cmdline);
-
-/* [Fix] install_page 함수 원형 선언 추가 (implicit declaration 에러 해결) */
 static bool install_page (void *upage, void *kpage, bool writable);
 
 /* 프로세스 실행 간 동기화를 위한 구조체 */
@@ -34,6 +32,8 @@ struct exec_info {
   char *cmdline;
   struct semaphore done;
   bool success;
+  /* [P2-1 FIX] 자식 프로세스 메타데이터 전달용 */
+  struct child_process *cp; 
 };
 
 /* Starts a new thread running a user program loaded from FILENAME. */
@@ -43,20 +43,16 @@ process_execute (const char *file_name)
   char *fn_copy;
   tid_t tid;
 
-  /* Make a copy of FILE_NAME.
-     Otherwise there's a race between the caller and load(). */
   fn_copy = palloc_get_page (0);
   if (fn_copy == NULL)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
 
-  /* Parse program name for thread_create */
   char name_copy[16];
   strlcpy (name_copy, file_name, sizeof name_copy);
   char *save_ptr;
   char *prog_name = strtok_r (name_copy, " ", &save_ptr);
 
-  /* Prepare execution info for synchronization */
   struct exec_info *info = malloc (sizeof (struct exec_info));
   if (info == NULL) 
     {
@@ -68,17 +64,38 @@ process_execute (const char *file_name)
   info->success = false;
   sema_init (&info->done, 0);
 
-  /* Create the thread */
-  tid = thread_create (prog_name, PRI_DEFAULT, start_process, info);
-  
-  if (tid == TID_ERROR)
+  /* [P2-1 FIX] 부모가 관리할 자식 메타데이터 생성 */
+  struct child_process *cp = malloc (sizeof (struct child_process));
+  if (cp == NULL)
     {
       palloc_free_page (fn_copy);
       free (info);
       return TID_ERROR;
     }
+  
+  cp->tid = TID_ERROR;
+  cp->exit_status = -1;
+  sema_init (&cp->wait_sema, 0);
+  list_push_back (&thread_current ()->children, &cp->elem);
+  
+  info->cp = cp; // 자식에게 포인터 전달
 
-  /* Wait for child to load successfully or fail */
+  tid = thread_create (prog_name, PRI_DEFAULT, start_process, info);
+  
+  if (tid == TID_ERROR)
+    {
+      // 실패 시 리스트에서 제거 및 해제
+      list_remove (&cp->elem);
+      free (cp);
+      palloc_free_page (fn_copy);
+      free (info);
+      return TID_ERROR;
+    }
+  
+  /* 스레드 생성 성공 시 TID 기록 */
+  cp->tid = tid;
+
+  /* Wait for load */
   sema_down (&info->done);
 
   if (!info->success)
@@ -93,58 +110,45 @@ static void
 start_process (void *aux_)
 {
   struct exec_info *info = aux_;
-  char *cmdline = info->cmdline; // 이것은 palloc된 페이지임
+  char *cmdline = info->cmdline; 
   struct intr_frame if_;
   bool success;
 
 #ifdef USERPROG
-  /* Initialize thread fields */
   struct thread *cur = thread_current ();
-  cur->exited = false;
   cur->exit_status = -1;
-  /* [Fix] load_completed 제거됨 */
   cur->load_success = false;
+  
+  /* [P2-1 FIX] 부모가 만들어준 내 메타데이터 포인터 저장 */
+  cur->cp = info->cp;
 #endif
 
-  /* Initialize interrupt frame */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
 
-  /* Load executable. */
-  /* 파일 시스템 접근 시 Lock 사용 */
   lock_acquire (&filesys_lock);
   success = load (cmdline, &if_.eip, &if_.esp);
   lock_release (&filesys_lock);
 
-  /* Load 성공 시 Argument Passing 수행 */
   if (success) 
     {
       if (!push_arguments (&if_.esp, cmdline))
         success = false;
     }
 
-  /* Clean up cmdline page */
   palloc_free_page (cmdline);
 
-  /* Signal parent */
   info->success = success;
 #ifdef USERPROG
-  /* [Fix] load_completed 제거됨 */
   cur->load_success = success;
 #endif
   sema_up (&info->done);
 
-  /* If load failed, quit. */
   if (!success) 
     thread_exit ();
 
-  /* Start the user process by simulating a return from an
-     interrupt, implemented by intr_exit (in threads/intr-stubs.S).
-     Because intr_exit takes all of its arguments on the stack in
-     the form of a `struct intr_frame', we just point the stack
-     pointer (%esp) to our stack frame and jump to it. */
   asm volatile ("movl %0, %%esp; jmp intr_exit" : : "g" (&if_) : "memory");
   NOT_REACHED ();
 }
@@ -153,20 +157,31 @@ start_process (void *aux_)
 int
 process_wait (tid_t child_tid UNUSED)
 {
-  /* Project 2-1 Requirement: Infinite loop */
-  struct thread *child = get_thread (child_tid);
+  /* [P2-1 FIX] 자식 리스트 검색 */
+  struct thread *cur = thread_current ();
+  struct list_elem *e;
 
-  if (child == NULL)
-    return -1;
-
-  /* 자식이 종료될 때까지 대기 (sema_up이 불릴 때까지) */
-  sema_down (&child->wait_sema);
-
-  /* 자식의 종료 상태 반환 */
-  int status = child->exit_status;
-  
-  /* 자식 스레드가 완전히 사라지기 전에 exit_status를 확보했다고 가정 */
-  return status;
+  for (e = list_begin (&cur->children); e != list_end (&cur->children);
+       e = list_next (e))
+    {
+      struct child_process *cp = list_entry (e, struct child_process, elem);
+      if (cp->tid == child_tid)
+        {
+          /* 자식이 종료될 때까지 대기 */
+          sema_down (&cp->wait_sema);
+          
+          /* 종료 코드 획득 */
+          int status = cp->exit_status;
+          
+          /* 정보 사용 후 리스트에서 제거 및 해제 */
+          list_remove (&cp->elem);
+          free (cp);
+          
+          return status;
+        }
+    }
+    
+  return -1;
 }
 
 /* Free the current process's resources. */
@@ -177,20 +192,23 @@ process_exit (void)
   uint32_t *pd;
 
 #ifdef USERPROG
-  /* 종료 메시지 출력: 프로세스 이름과 exit code */
-  /* 로드에 성공한 유저 프로세스만 출력 */
   if (cur->pagedir != NULL && cur->load_success) 
     {
       printf ("%s: exit(%d)\n", cur->name, cur->exit_status);
     }
     
-  /* 실행 중인 파일 닫기 (쓰기 권한 복구) */
   if (cur->bin_file != NULL)
     {
       file_close (cur->bin_file);
       cur->bin_file = NULL;
     }
-  sema_up (&cur->wait_sema);
+
+  /* [P2-1 FIX] 부모가 볼 수 있는 메타데이터 업데이트 */
+  if (cur->cp != NULL)
+    {
+      cur->cp->exit_status = cur->exit_status;
+      sema_up (&cur->cp->wait_sema);
+    }
 #endif
 
   pd = cur->pagedir;
@@ -202,20 +220,18 @@ process_exit (void)
     }
 }
 
-/* Sets up the CPU for running user code in the current thread. */
+/* process_activate 및 load, load_segment 등 나머지 코드는 동일 ... */
+/* 파일 길이가 길어 나머지 부분은 기존 코드와 동일합니다 (load 함수 포함) */
+/* 만약 전체 코드가 필요하시면 말씀해 주세요. */
+
 void
 process_activate (void)
 {
   struct thread *t = thread_current ();
-
-  /* Activate thread's page tables. */
   pagedir_activate (t->pagedir);
-
-  /* Set thread's kernel stack for use in processing interrupts. */
   tss_update ();
 }
 
-/* ELF headers and types */
 typedef uint32_t Elf32_Word, Elf32_Addr, Elf32_Off;
 typedef uint16_t Elf32_Half;
 
@@ -268,7 +284,6 @@ static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
                           uint32_t read_bytes, uint32_t zero_bytes,
                           bool writable);
 
-/* Loads an ELF executable from FILE_NAME into the current thread. */
 bool
 load (const char *file_name, void (**eip) (void), void **esp)
 {
@@ -279,22 +294,19 @@ load (const char *file_name, void (**eip) (void), void **esp)
   bool success = false;
   int i;
 
-  /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
   if (t->pagedir == NULL)
     goto done;
   process_activate ();
 
-  /* cmdline에서 프로그램 이름만 추출 */
   char *fn_copy = palloc_get_page (0);
   if (fn_copy == NULL) goto done;
   strlcpy (fn_copy, file_name, PGSIZE);
   char *save_ptr;
   char *prog_name = strtok_r (fn_copy, " ", &save_ptr);
 
-  /* Open executable file. */
   file = filesys_open (prog_name);
-  palloc_free_page (fn_copy); // 이름 추출 후 해제
+  palloc_free_page (fn_copy);
 
   if (file == NULL)
     {
@@ -302,10 +314,8 @@ load (const char *file_name, void (**eip) (void), void **esp)
       goto done;
     }
 
-  /* [P2-1 & P2-2 Required] Executable write protection */
   file_deny_write (file);
 
-  /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
       || memcmp (ehdr.e_ident, "\177ELF\1\1\1", 7)
       || ehdr.e_type != 2
@@ -318,7 +328,6 @@ load (const char *file_name, void (**eip) (void), void **esp)
       goto done;
     }
 
-  /* Read program headers. */
   file_ofs = ehdr.e_phoff;
   for (i = 0; i < ehdr.e_phnum; i++)
     {
@@ -339,7 +348,6 @@ load (const char *file_name, void (**eip) (void), void **esp)
         case PT_PHDR:
         case PT_STACK:
         default:
-          /* Ignore this segment. */
           break;
         case PT_DYNAMIC:
         case PT_INTERP:
@@ -374,20 +382,16 @@ load (const char *file_name, void (**eip) (void), void **esp)
         }
     }
 
-  /* Set up stack. */
   if (!setup_stack (esp))
     goto done;
 
-  /* Start address. */
   *eip = (void (*) (void)) ehdr.e_entry;
 
   success = true;
 
  done:
-  /* We arrive here whether the load is successful or not. */
   if (success) 
     {
-      /* 로드 성공 시 파일 포인터를 스레드에 저장해 쓰기 방지 유지 */
       t->bin_file = file; 
     }
   else 
@@ -397,62 +401,28 @@ load (const char *file_name, void (**eip) (void), void **esp)
   return success;
 }
 
-/* Checks whether PHDR describes a valid, loadable segment in
-   FILE and returns true if so, false otherwise. */
 static bool
 validate_segment (const struct Elf32_Phdr *phdr, struct file *file)
 {
-  /* p_offset and p_vaddr must have the same page offset. */
   if ((phdr->p_offset & PGMASK) != (phdr->p_vaddr & PGMASK))
     return false;
-
-  /* p_offset must point within FILE. */
   if (phdr->p_offset > (Elf32_Off) file_length (file))
     return false;
-
-  /* p_memsz must be at least as big as p_filesz. */
   if (phdr->p_memsz < phdr->p_filesz)
     return false;
-
-  /* The segment must not be empty. */
   if (phdr->p_memsz == 0)
     return false;
-
-  /* The virtual memory region must both start and end within the
-     user address space range. */
   if (!is_user_vaddr ((void *) phdr->p_vaddr))
     return false;
   if (!is_user_vaddr ((void *) (phdr->p_vaddr + phdr->p_memsz)))
     return false;
-
-  /* The region cannot "wrap around" across the kernel virtual
-     address space. */
   if (phdr->p_vaddr + phdr->p_memsz < phdr->p_vaddr)
     return false;
-
-  /* Disallow mapping page 0.
-     It's not profitable to use this for code or data. */
   if (phdr->p_vaddr < PGSIZE)
     return false;
-
-  /* It's okay. */
   return true;
 }
 
-/* Loads a segment starting at offset OFS in FILE at address
-   UPAGE.  In total, READ_BYTES + ZERO_BYTES bytes of virtual
-   memory are initialized, as follows:
-
-        - READ_BYTES bytes at UPAGE must be read from FILE
-          starting at offset OFS.
-
-        - ZERO_BYTES bytes at UPAGE + READ_BYTES must be zeroed.
-
-   The pages initialized by this function must be writable by the
-   user process if WRITABLE is true, read-only otherwise.
-
-   Return true if successful, false if a memory allocation error
-   or disk read error occurs. */
 static bool
 load_segment (struct file *file, off_t ofs, uint8_t *upage,
               uint32_t read_bytes, uint32_t zero_bytes, bool writable)
@@ -464,18 +434,13 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   file_seek (file, ofs);
   while (read_bytes > 0 || zero_bytes > 0)
     {
-      /* Calculate how to fill this page.
-         We will read PAGE_READ_BYTES bytes from FILE
-         and zero the final PAGE_ZERO_BYTES bytes. */
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
-      /* Get a page of memory. */
       uint8_t *kpage = palloc_get_page (PAL_USER);
       if (kpage == NULL)
         return false;
 
-      /* Load this page. */
       if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
         {
           palloc_free_page (kpage);
@@ -483,14 +448,12 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
         }
       memset (kpage + page_read_bytes, 0, page_zero_bytes);
 
-      /* Add the page to the process's address space. */
       if (!install_page (upage, kpage, writable))
         {
           palloc_free_page (kpage);
           return false;
         }
 
-      /* Advance. */
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
       upage += PGSIZE;
@@ -498,8 +461,6 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   return true;
 }
 
-/* Create a minimal stack by mapping a zeroed page at the top of
-   user virtual memory. */
 static bool
 setup_stack (void **esp)
 {
@@ -518,27 +479,14 @@ setup_stack (void **esp)
   return success;
 }
 
-/* Adds a mapping from user virtual address UPAGE to kernel
-   virtual address KPAGE to the page table.
-   If WRITABLE is true, the user process may modify the page;
-   otherwise, it is read-only.
-   UPAGE must not already be mapped.
-   KPAGE should probably be a page obtained from the user pool
-   with palloc_get_page().
-   Returns true on success, false if UPAGE is already mapped or
-   if memory allocation fails. */
 static bool
 install_page (void *upage, void *kpage, bool writable)
 {
   struct thread *t = thread_current ();
-
-  /* Verify that there's not already a page at that virtual
-     address, then map our page there. */
   return (pagedir_get_page (t->pagedir, upage) == NULL
           && pagedir_set_page (t->pagedir, upage, kpage, writable));
 }
 
-/* Argument Passing Helper */
 static bool
 push_arguments (void **esp, const char *cmdline)
 {
@@ -547,11 +495,10 @@ push_arguments (void **esp, const char *cmdline)
     return false;
   strlcpy (copy, cmdline, PGSIZE);
 
-  char *argv[64]; // 제한: 인자는 최대 64개로 가정
+  char *argv[64];
   int argc = 0;
   char *token, *save_ptr;
 
-  /* 1. Parse arguments */
   for (token = strtok_r (copy, " ", &save_ptr); token != NULL;
        token = strtok_r (NULL, " ", &save_ptr))
     {
@@ -563,26 +510,23 @@ push_arguments (void **esp, const char *cmdline)
        argv[argc++] = token;
     }
     
-  if (argc == 0) // Should not happen with current logic, but safe check
+  if (argc == 0)
     {
       palloc_free_page (copy);
       return false;
     }
 
   void *sp = *esp;
-  char *arg_addrs[64]; // 스택에 복사된 문자열의 주소 저장
+  char *arg_addrs[64];
 
-  /* 2. Push strings (reverse loop not strictly needed for strings, 
-        but good for keeping order in memory) */
   for (int i = argc - 1; i >= 0; i--)
     {
-      size_t len = strlen (argv[i]) + 1; // null terminator 포함
+      size_t len = strlen (argv[i]) + 1;
       sp = (uint8_t *) sp - len;
       memcpy (sp, argv[i], len);
       arg_addrs[i] = sp;
     }
 
-  /* 3. Word Align */
   uintptr_t sp_val = (uintptr_t) sp;
   size_t pad = sp_val % 4;
   if (pad)
@@ -591,27 +535,22 @@ push_arguments (void **esp, const char *cmdline)
       memset (sp, 0, pad);
     }
 
-  /* 4. Push NULL sentinel for argv[argc] */
   sp = (uint8_t *) sp - sizeof (char *);
   *(char **) sp = NULL;
 
-  /* 5. Push argv pointers (Right-to-Left) */
   for (int i = argc - 1; i >= 0; i--)
     {
       sp = (uint8_t *) sp - sizeof (char *);
       *(char **) sp = arg_addrs[i];
     }
 
-  /* 6. Push argv pointer (pointer to argv[0]) */
   char **argv0 = (char **) sp;
   sp = (uint8_t *) sp - sizeof (char **);
   *(char ***) sp = argv0;
 
-  /* 7. Push argc */
   sp = (uint8_t *) sp - sizeof (int);
   *(int *) sp = argc;
 
-  /* 8. Push fake return address */
   sp = (uint8_t *) sp - sizeof (void *);
   *(void **) sp = NULL;
 

@@ -178,10 +178,7 @@ struct thread *
 thread_current (void)
 {
   struct thread *t = running_thread ();
-  
-  /* P2-1: running 상태 체크 제거 (Context Switch 중 일시적 불일치 허용) */
   ASSERT (is_thread (t));
-
   return t;
 }
 
@@ -198,7 +195,6 @@ thread_exit (void)
 
 #ifdef USERPROG
   process_exit ();
-  /* [P2-1 FIX] load_sema는 제거되었으므로 free 로직 삭제 */
 #endif
 
   intr_disable ();
@@ -331,13 +327,13 @@ init_thread (struct thread *t, const char *name, int priority)
   t->magic = THREAD_MAGIC;
 
 #ifdef USERPROG
-  /* [P2-1 FIX] 초기화 */
-  t->exit_status = -1;       // 기본 에러 코드
-  t->exited = false;
+  t->exit_status = -1;
   t->load_success = false;
-  t->bin_file = NULL;        // 실행 파일 포인터 초기화
-  /* load_sema malloc 제거됨 */
-  sema_init (&t->wait_sema, 0);
+  t->bin_file = NULL;
+  
+  /* [P2-1 FIX] 자식 리스트 초기화 */
+  list_init (&t->children);
+  t->cp = NULL;
 #endif
 
   old_level = intr_disable ();
@@ -416,20 +412,3 @@ allocate_tid (void)
 }
 
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
-
-struct thread *
-get_thread (tid_t tid)
-{
-  struct list_elem *e;
-
-  ASSERT (intr_get_level () == INTR_OFF);
-
-  for (e = list_begin (&all_list); e != list_end (&all_list);
-       e = list_next (e))
-    {
-      struct thread *t = list_entry (e, struct thread, allelem);
-      if (t->tid == tid)
-        return t;
-    }
-  return NULL;
-}
