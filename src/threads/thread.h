@@ -4,10 +4,11 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
-#include <stdbool.h>              /* [P2-1 FIX] */
+#include <stdbool.h>
 
-/* [P2-1 FIX] synch.h 순환 include 방지: forward declaration만 */
+/* [P2-1 FIX] Circular dependency 방지용 전방 선언 */
 struct semaphore;
+struct file; /* 실행 파일 포인터 저장을 위해 필요 */
 
 enum thread_status
   {
@@ -38,21 +39,20 @@ struct thread
     struct list_elem elem;
 
 #ifdef USERPROG
-    uint32_t *pagedir;
+    /* Owned by userprog/process.c. */
+    uint32_t *pagedir;          /* Page directory. */
 
-    /* exit 메시지/상태 관리를 위한 필드 */
-    int exit_status;            /* exit code */
-    bool exited;                /* exit_status가 유효한지 */
+    /* [P2-1 FIX] Process Control Fields */
+    int exit_status;            /* exit(status)로 전달된 값 */
+    bool exited;                /* 정상적으로 exit 호출되었는지 여부 */
+    bool load_success;          /* 프로그램 로드 성공 여부 (실패 시 종료 메시지 출력 안 함) */
 
-    /* load 관련 상태 */
-    bool load_completed;        /* load 시도 완료 */
-    bool load_success;          /* load 성공 여부 */
-
-    /* [FIX] semaphore를 포인터로 보관 (thread.h에서 synch.h include 제거했기 때문) */
-    struct semaphore *load_sema;
+    /* [P2-1 FIX] Executable file pointer for deny_write */
+    struct file *bin_file;      /* 현재 실행 중인 파일 (종료 시 close 필요) */
 #endif
 
-    unsigned magic;
+    /* Owned by thread.c. */
+    unsigned magic;             /* Detects stack overflow. */
   };
 
 extern bool thread_mlfqs;

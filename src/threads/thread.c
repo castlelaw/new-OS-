@@ -12,7 +12,7 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
-#include "threads/malloc.h"   /* ✅ [FIX] malloc/free 사용 */
+#include "threads/malloc.h"
 
 #ifdef USERPROG
 #include "userprog/process.h"
@@ -175,17 +175,15 @@ thread_name (void)
 }
 
 struct thread *
-thread_current (void) 
+thread_current (void)
 {
   struct thread *t = running_thread ();
-
-  /* 스택 오버플로우 등으로 깨진 포인터는 계속 잡아내되,
-     RUNNING 상태 assert는 userprog 테스트 환경에서 불필요하게 panic을 유발할 수 있어 제거 */
+  
+  /* P2-1: running 상태 체크 제거 (Context Switch 중 일시적 불일치 허용) */
   ASSERT (is_thread (t));
 
   return t;
 }
-
 
 tid_t
 thread_tid (void)
@@ -200,13 +198,7 @@ thread_exit (void)
 
 #ifdef USERPROG
   process_exit ();
-
-  /* ✅ [FIX] load_sema는 동적할당했으니 여기서 free */
-  if (thread_current ()->load_sema != NULL)
-    {
-      free (thread_current ()->load_sema);
-      thread_current ()->load_sema = NULL;
-    }
+  /* [P2-1 FIX] load_sema는 제거되었으므로 free 로직 삭제 */
 #endif
 
   intr_disable ();
@@ -339,15 +331,12 @@ init_thread (struct thread *t, const char *name, int priority)
   t->magic = THREAD_MAGIC;
 
 #ifdef USERPROG
-  t->exit_status = -1;
+  /* [P2-1 FIX] 초기화 */
+  t->exit_status = -1;       // 기본 에러 코드
   t->exited = false;
-  t->load_completed = false;
   t->load_success = false;
-
-  /* ✅ [FIX] semaphore를 포인터로 할당 */
-  t->load_sema = malloc (sizeof *t->load_sema);
-  if (t->load_sema != NULL)
-    sema_init (t->load_sema, 0);
+  t->bin_file = NULL;        // 실행 파일 포인터 초기화
+  /* load_sema malloc 제거됨 */
 #endif
 
   old_level = intr_disable ();
