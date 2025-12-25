@@ -154,11 +154,19 @@ int
 process_wait (tid_t child_tid UNUSED)
 {
   /* Project 2-1 Requirement: Infinite loop */
-  for (;;) 
-    {
-      thread_yield ();
-    }
-  return -1;
+  struct thread *child = get_thread (child_tid);
+
+  if (child == NULL)
+    return -1;
+
+  /* 자식이 종료될 때까지 대기 (sema_up이 불릴 때까지) */
+  sema_down (&child->wait_sema);
+
+  /* 자식의 종료 상태 반환 */
+  int status = child->exit_status;
+  
+  /* 자식 스레드가 완전히 사라지기 전에 exit_status를 확보했다고 가정 */
+  return status;
 }
 
 /* Free the current process's resources. */
@@ -182,6 +190,7 @@ process_exit (void)
       file_close (cur->bin_file);
       cur->bin_file = NULL;
     }
+  sema_up (&cur->wait_sema);
 #endif
 
   pd = cur->pagedir;

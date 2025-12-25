@@ -5,6 +5,7 @@
 #include <list.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include "threads/synch.h"
 
 /* [P2-1 FIX] Circular dependency 방지용 전방 선언 */
 struct semaphore;
@@ -49,6 +50,7 @@ struct thread
 
     /* [P2-1 FIX] Executable file pointer for deny_write */
     struct file *bin_file;      /* 현재 실행 중인 파일 (종료 시 close 필요) */
+    struct semaphore wait_sema;
 #endif
 
     /* Owned by thread.c. */
@@ -72,6 +74,8 @@ void thread_unblock (struct thread *);
 struct thread *thread_current (void);
 tid_t thread_tid (void);
 const char *thread_name (void);
+
+struct thread *get_thread (tid_t tid);
 
 void thread_exit (void) NO_RETURN;
 void thread_yield (void);

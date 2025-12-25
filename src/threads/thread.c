@@ -337,6 +337,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->load_success = false;
   t->bin_file = NULL;        // 실행 파일 포인터 초기화
   /* load_sema malloc 제거됨 */
+  sema_init (&t->wait_sema, 0);
 #endif
 
   old_level = intr_disable ();
@@ -415,3 +416,20 @@ allocate_tid (void)
 }
 
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
+
+struct thread *
+get_thread (tid_t tid)
+{
+  struct list_elem *e;
+
+  ASSERT (intr_get_level () == INTR_OFF);
+
+  for (e = list_begin (&all_list); e != list_end (&all_list);
+       e = list_next (e))
+    {
+      struct thread *t = list_entry (e, struct thread, allelem);
+      if (t->tid == tid)
+        return t;
+    }
+  return NULL;
+}
