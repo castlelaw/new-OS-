@@ -55,9 +55,8 @@ kill (struct intr_frame *f)
          expected.  Kill the user process.  */
       {
         struct thread *cur = thread_current ();
-        cur->exited = true;
+        /* [FIX] cur->exited 제거됨 */
         cur->exit_status = -1;
-        /* process_exit()에서 출력하도록 위임 */
         printf ("%s: exit(%d)\n", cur->name, -1);
         thread_exit ();
       }
@@ -103,25 +102,17 @@ page_fault (struct intr_frame *f)
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
 
-  /* Project 2-1:
-     가상 메모리(Swap, Stack Growth) 구현 전이므로,
-     User Mode에서 발생한 Page Fault는 모두 잘못된 메모리 접근입니다.
-     따라서 즉시 프로세스를 종료합니다. */
-
+  /* Project 2-1: User Mode에서 발생한 Page Fault는 종료 */
   if (user)
     {
       struct thread *cur = thread_current ();
-      cur->exited = true;
+      /* [FIX] cur->exited 제거됨 */
       cur->exit_status = -1;
       printf ("%s: exit(%d)\n", cur->name, -1);
       thread_exit ();
     }
 
-  /* 커널 모드에서의 Page Fault 발생 시
-     Project 2-1에서는 syscall.c에서 포인터를 미리 검증하므로
-     이곳에 도달했다면 커널 버그이거나 검증 누락입니다. */
-  
-  /* 디버깅 정보를 출력하고 커널 패닉 */
+  /* 커널 모드 Page Fault */
   printf ("Page fault at %p: %s error %s page in %s context.\n",
           fault_addr,
           not_present ? "not present" : "rights violation",
