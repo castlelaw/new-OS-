@@ -192,7 +192,7 @@ process_exit (void)
   uint32_t *pd;
 
 #ifdef USERPROG
-  if (cur->pagedir != NULL && cur->load_success) 
+  if (cur->pagedir != NULL) 
     {
       printf ("%s: exit(%d)\n", cur->name, cur->exit_status);
     }
@@ -306,7 +306,6 @@ load (const char *file_name, void (**eip) (void), void **esp)
   char *prog_name = strtok_r (fn_copy, " ", &save_ptr);
 
   file = filesys_open (prog_name);
-  palloc_free_page (fn_copy);
 
   if (file == NULL)
     {

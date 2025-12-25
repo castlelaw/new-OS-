@@ -57,7 +57,6 @@ kill (struct intr_frame *f)
         struct thread *cur = thread_current ();
         /* [FIX] cur->exited 제거됨 */
         cur->exit_status = -1;
-        printf ("%s: exit(%d)\n", cur->name, -1);
         thread_exit ();
       }
 
@@ -108,7 +107,6 @@ page_fault (struct intr_frame *f)
       struct thread *cur = thread_current ();
       /* [FIX] cur->exited 제거됨 */
       cur->exit_status = -1;
-      printf ("%s: exit(%d)\n", cur->name, -1);
       thread_exit ();
     }
 
