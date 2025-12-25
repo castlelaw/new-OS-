@@ -26,6 +26,9 @@ static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
 static bool push_arguments (void **esp, const char *cmdline);
 
+/* [Fix] install_page 함수 원형 선언 추가 (implicit declaration 에러 해결) */
+static bool install_page (void *upage, void *kpage, bool writable);
+
 /* 프로세스 실행 간 동기화를 위한 구조체 */
 struct exec_info {
   char *cmdline;
@@ -99,7 +102,7 @@ start_process (void *aux_)
   struct thread *cur = thread_current ();
   cur->exited = false;
   cur->exit_status = -1;
-  cur->load_completed = false;
+  /* [Fix] load_completed 제거됨 */
   cur->load_success = false;
 #endif
 
@@ -110,7 +113,7 @@ start_process (void *aux_)
   if_.eflags = FLAG_IF | FLAG_MBS;
 
   /* Load executable. */
-  /* 파일 시스템 접근 시 Lock 사용 [cite: 74] */
+  /* 파일 시스템 접근 시 Lock 사용 */
   lock_acquire (&filesys_lock);
   success = load (cmdline, &if_.eip, &if_.esp);
   lock_release (&filesys_lock);
@@ -128,7 +131,7 @@ start_process (void *aux_)
   /* Signal parent */
   info->success = success;
 #ifdef USERPROG
-  cur->load_completed = true;
+  /* [Fix] load_completed 제거됨 */
   cur->load_success = success;
 #endif
   sema_up (&info->done);
@@ -150,7 +153,7 @@ start_process (void *aux_)
 int
 process_wait (tid_t child_tid UNUSED)
 {
-  /* Project 2-1 Requirement: Infinite loop [cite: 28] */
+  /* Project 2-1 Requirement: Infinite loop */
   for (;;) 
     {
       thread_yield ();
@@ -166,7 +169,7 @@ process_exit (void)
   uint32_t *pd;
 
 #ifdef USERPROG
-  /* 종료 메시지 출력: 프로세스 이름과 exit code [cite: 32] */
+  /* 종료 메시지 출력: 프로세스 이름과 exit code */
   /* 로드에 성공한 유저 프로세스만 출력 */
   if (cur->pagedir != NULL && cur->load_success) 
     {
@@ -583,7 +586,7 @@ push_arguments (void **esp, const char *cmdline)
   sp = (uint8_t *) sp - sizeof (char *);
   *(char **) sp = NULL;
 
-  /* 5. Push argv pointers (Right-to-Left) [cite: 223] */
+  /* 5. Push argv pointers (Right-to-Left) */
   for (int i = argc - 1; i >= 0; i--)
     {
       sp = (uint8_t *) sp - sizeof (char *);
