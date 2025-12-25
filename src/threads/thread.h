@@ -40,14 +40,16 @@ struct thread
 #ifdef USERPROG
     uint32_t *pagedir;
 
-    /* [P2-1 FIX] exit 메시지/상태 관리를 위한 필드 */
+    /* exit 메시지/상태 관리를 위한 필드 */
     int exit_status;            /* exit code */
     bool exited;                /* exit_status가 유효한지 */
+
+    /* load 관련 상태 */
     bool load_completed;        /* load 시도 완료 */
     bool load_success;          /* load 성공 여부 */
 
-    /* (2-2 확장용으로 남겨둬도 됨) */
-    struct semaphore load_sema;
+    /* [FIX] semaphore를 포인터로 보관 (thread.h에서 synch.h include 제거했기 때문) */
+    struct semaphore *load_sema;
 #endif
 
     unsigned magic;

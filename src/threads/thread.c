@@ -4,6 +4,7 @@
 #include <random.h>
 #include <stdio.h>
 #include <string.h>
+
 #include "threads/flags.h"
 #include "threads/interrupt.h"
 #include "threads/intr-stubs.h"
@@ -11,6 +12,8 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "threads/malloc.h"   /* ✅ [FIX] malloc/free 사용 */
+
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -25,7 +28,7 @@ static struct thread *initial_thread;
 
 static struct lock tid_lock;
 
-struct kernel_thread_frame 
+struct kernel_thread_frame
   {
     void *eip;
     thread_func *function;
@@ -54,7 +57,7 @@ void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
 void
-thread_init (void) 
+thread_init (void)
 {
   ASSERT (intr_get_level () == INTR_OFF);
 
@@ -69,7 +72,7 @@ thread_init (void)
 }
 
 void
-thread_start (void) 
+thread_start (void)
 {
   struct semaphore idle_started;
   sema_init (&idle_started, 0);
@@ -81,7 +84,7 @@ thread_start (void)
 }
 
 void
-thread_tick (void) 
+thread_tick (void)
 {
   struct thread *t = thread_current ();
 
@@ -99,7 +102,7 @@ thread_tick (void)
 }
 
 void
-thread_print_stats (void) 
+thread_print_stats (void)
 {
   printf ("Thread: %lld idle ticks, %lld kernel ticks, %lld user ticks\n",
           idle_ticks, kernel_ticks, user_ticks);
@@ -107,7 +110,7 @@ thread_print_stats (void)
 
 tid_t
 thread_create (const char *name, int priority,
-               thread_func *function, void *aux) 
+               thread_func *function, void *aux)
 {
   struct thread *t;
   struct kernel_thread_frame *kf;
@@ -142,7 +145,7 @@ thread_create (const char *name, int priority,
 }
 
 void
-thread_block (void) 
+thread_block (void)
 {
   ASSERT (!intr_context ());
   ASSERT (intr_get_level () == INTR_OFF);
@@ -152,7 +155,7 @@ thread_block (void)
 }
 
 void
-thread_unblock (struct thread *t) 
+thread_unblock (struct thread *t)
 {
   enum intr_level old_level;
 
@@ -166,16 +169,16 @@ thread_unblock (struct thread *t)
 }
 
 const char *
-thread_name (void) 
+thread_name (void)
 {
   return thread_current ()->name;
 }
 
 struct thread *
-thread_current (void) 
+thread_current (void)
 {
   struct thread *t = running_thread ();
-  
+
   ASSERT (is_thread (t));
   ASSERT (t->status == THREAD_RUNNING);
 
@@ -183,18 +186,25 @@ thread_current (void)
 }
 
 tid_t
-thread_tid (void) 
+thread_tid (void)
 {
   return thread_current ()->tid;
 }
 
 void
-thread_exit (void) 
+thread_exit (void)
 {
   ASSERT (!intr_context ());
 
 #ifdef USERPROG
   process_exit ();
+
+  /* ✅ [FIX] load_sema는 동적할당했으니 여기서 free */
+  if (thread_current ()->load_sema != NULL)
+    {
+      free (thread_current ()->load_sema);
+      thread_current ()->load_sema = NULL;
+    }
 #endif
 
   intr_disable ();
@@ -205,15 +215,15 @@ thread_exit (void)
 }
 
 void
-thread_yield (void) 
+thread_yield (void)
 {
   struct thread *cur = thread_current ();
   enum intr_level old_level;
-  
+
   ASSERT (!intr_context ());
 
   old_level = intr_disable ();
-  if (cur != idle_thread) 
+  if (cur != idle_thread)
     list_push_back (&ready_list, &cur->elem);
   cur->status = THREAD_READY;
   schedule ();
@@ -236,59 +246,57 @@ thread_foreach (thread_action_func *func, void *aux)
 }
 
 void
-thread_set_priority (int new_priority) 
+thread_set_priority (int new_priority)
 {
   thread_current ()->priority = new_priority;
 }
 
 int
-thread_get_priority (void) 
+thread_get_priority (void)
 {
   return thread_current ()->priority;
 }
 
 void
-thread_set_nice (int nice UNUSED) 
+thread_set_nice (int nice UNUSED)
 {
-  /* Not yet implemented. */
 }
 
 int
-thread_get_nice (void) 
-{
-  return 0;
-}
-
-int
-thread_get_load_avg (void) 
+thread_get_nice (void)
 {
   return 0;
 }
 
 int
-thread_get_recent_cpu (void) 
+thread_get_load_avg (void)
+{
+  return 0;
+}
+
+int
+thread_get_recent_cpu (void)
 {
   return 0;
 }
 
 static void
-idle (void *idle_started_ UNUSED) 
+idle (void *idle_started_ UNUSED)
 {
   struct semaphore *idle_started = idle_started_;
   idle_thread = thread_current ();
   sema_up (idle_started);
 
-  for (;;) 
+  for (;;)
     {
       intr_disable ();
       thread_block ();
-
       asm volatile ("sti; hlt" : : : "memory");
     }
 }
 
 static void
-kernel_thread (thread_func *function, void *aux) 
+kernel_thread (thread_func *function, void *aux)
 {
   ASSERT (function != NULL);
 
@@ -297,9 +305,8 @@ kernel_thread (thread_func *function, void *aux)
   thread_exit ();
 }
 
-/* ✅ [FIX] 선언과 동일하게 static을 붙여야 함 */
 static struct thread *
-running_thread (void) 
+running_thread (void)
 {
   uint32_t *esp;
 
@@ -330,11 +337,15 @@ init_thread (struct thread *t, const char *name, int priority)
   t->magic = THREAD_MAGIC;
 
 #ifdef USERPROG
-  /* [P2 MOD] thread.h에 추가한 USERPROG 필드 초기화 */
   t->exit_status = -1;
   t->exited = false;
-  sema_init (&t->load_sema, 0);
+  t->load_completed = false;
   t->load_success = false;
+
+  /* ✅ [FIX] semaphore를 포인터로 할당 */
+  t->load_sema = malloc (sizeof *t->load_sema);
+  if (t->load_sema != NULL)
+    sema_init (t->load_sema, 0);
 #endif
 
   old_level = intr_disable ();
@@ -343,7 +354,7 @@ init_thread (struct thread *t, const char *name, int priority)
 }
 
 static void *
-alloc_frame (struct thread *t, size_t size) 
+alloc_frame (struct thread *t, size_t size)
 {
   ASSERT (is_thread (t));
   ASSERT (size % sizeof (uint32_t) == 0);
@@ -353,7 +364,7 @@ alloc_frame (struct thread *t, size_t size)
 }
 
 static struct thread *
-next_thread_to_run (void) 
+next_thread_to_run (void)
 {
   if (list_empty (&ready_list))
     return idle_thread;
@@ -365,7 +376,7 @@ void
 thread_schedule_tail (struct thread *prev)
 {
   struct thread *cur = running_thread ();
-  
+
   ASSERT (intr_get_level () == INTR_OFF);
 
   cur->status = THREAD_RUNNING;
@@ -376,7 +387,7 @@ thread_schedule_tail (struct thread *prev)
   process_activate ();
 #endif
 
-  if (prev != NULL && prev->status == THREAD_DYING && prev != initial_thread) 
+  if (prev != NULL && prev->status == THREAD_DYING && prev != initial_thread)
     {
       ASSERT (prev != cur);
       palloc_free_page (prev);
@@ -384,7 +395,7 @@ thread_schedule_tail (struct thread *prev)
 }
 
 static void
-schedule (void) 
+schedule (void)
 {
   struct thread *cur = running_thread ();
   struct thread *next = next_thread_to_run ();
@@ -400,7 +411,7 @@ schedule (void)
 }
 
 static tid_t
-allocate_tid (void) 
+allocate_tid (void)
 {
   static tid_t next_tid = 1;
   tid_t tid;
