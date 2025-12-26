@@ -8,11 +8,13 @@
 #include "threads/synch.h"
 #include "userprog/pagedir.h"
 #include "devices/shutdown.h"
+#include "devices/input.h"
 #include "console.h"
 #include "userprog/process.h"
 #include "filesys/filesys.h"
+#include "filesys/file.h"
 
-/* [P2-1 FIX] 전역 락 정의 (process.c와 공유) */
+/* 전역 락 정의  */
 struct lock filesys_lock;
 
 static void syscall_handler (struct intr_frame *);
@@ -25,6 +27,11 @@ static void check_user_string (const char *str);
 /* 유저 스택에서 인자 가져오기 */
 static int32_t get_user_i32 (const void *uaddr);
 static void *get_user_ptr (const void *uaddr);
+
+/* 파일 디스크립터 헬퍼 함수 */
+static int add_file_to_fdt (struct file *file);
+static struct file *get_file_from_fdt (int fd);
+static void remove_file_from_fdt (int fd);
 
 /* 전방 선언 */
 void exit (int status);
@@ -99,6 +106,44 @@ get_user_ptr (const void *uaddr)
   return *(void * const *) uaddr;
 }
 
+/* --- 파일 디스크립터 관리 헬퍼 --- */
+
+static int
+add_file_to_fdt (struct file *file)
+{
+  struct thread *cur = thread_current ();
+  /* fd 2부터 시작 (0: stdin, 1: stdout) */
+  /* thread.h 수정 시 fd_table이 추가되었으므로 사용 가능 */
+  
+  for (int i = 2; i < 128; i++) 
+    {
+      if (cur->fd_table[i] == NULL)
+        {
+          cur->fd_table[i] = file;
+          return i;
+        }
+    }
+  return -1; // FD 테이블 가득 참
+}
+
+static struct file *
+get_file_from_fdt (int fd)
+{
+  struct thread *cur = thread_current ();
+  if (fd < 2 || fd >= 128)
+    return NULL;
+  return cur->fd_table[fd];
+}
+
+static void
+remove_file_from_fdt (int fd)
+{
+  struct thread *cur = thread_current ();
+  if (fd < 2 || fd >= 128)
+    return;
+  cur->fd_table[fd] = NULL;
+}
+
 /* syscall.c 내에서 사용할 간편 exit 함수 */
 void
 exit (int status)
@@ -166,6 +211,29 @@ syscall_handler (struct intr_frame *f)
       {
         tid_t tid = (tid_t) get_user_i32 ((uint8_t *) f->esp + 4);
         f->eax = process_wait (tid);
+        break;
+      }
+
+    case SYS_CREATE:
+      {
+        const char *name = get_user_ptr ((uint8_t *) f->esp + 4);
+        unsigned initial_size = (unsigned) get_user_i32 ((uint8_t *) f->esp + 8);
+        check_user_string (name);
+
+        lock_acquire (&filesys_lock);
+        f->eax = filesys_create (name, initial_size);
+        lock_release (&filesys_lock);
+        break;
+      }
+
+    case SYS_REMOVE:
+      {
+        const char *name = get_user_ptr ((uint8_t *) f->esp + 4);
+        check_user_string (name);
+
+        lock_acquire (&filesys_lock);
+        f->eax = filesys_remove (name);
+        lock_release (&filesys_lock);
         break;
       }
 
