@@ -57,7 +57,7 @@ kill (struct intr_frame *f)
         struct thread *cur = thread_current ();
         /* 프로젝트 요구사항에 따라 종료 상태를 -1로 설정하고 메시지 출력 */
         cur->exit_status = -1;
-        printf("%s: exit(-1)\n", cur->name);
+        printf("%s: exit(-1)\n", cur->name); //프로세스의 종료 상태와 이름 출력
         thread_exit ();
       }
 
@@ -104,7 +104,7 @@ page_fault (struct intr_frame *f)
 
   /* 프로젝트 2-2: 사용자 모드 혹은 잘못된 주소 접근 시 
      프로세스를 종료하고 -1을 반환하도록 로직 강화 */
-  if (user)
+  if (user) //사용자 프로그램에서의 오류
     {
       struct thread *cur = thread_current ();
       cur->exit_status = -1;
@@ -112,11 +112,11 @@ page_fault (struct intr_frame *f)
       thread_exit ();
     }
 
-  /* 커널 모드에서의 예기치 못한 Page Fault 출력 및 종료 */
-  printf ("Page fault at %p: %s error %s page in %s context.\n",
+  /* 커널 모드에서의 page fault 유형 출력 및 종료 */
+  printf ("Page fault at %p: %s error %s page in %s context.\n", 
           fault_addr,
           not_present ? "not present" : "rights violation",
           write ? "writing" : "reading",
           user ? "user" : "kernel");
-  kill (f);
+  kill (f); //프로세스 완전히 중단
 }
