@@ -152,8 +152,8 @@ exit (int status)
 {
   struct thread *cur = thread_current ();
   /* [FIX] cur->exited 제거됨 */
-  cur->exit_status = status;
-  printf("%s: exit(%d)\n", cur->name, status);
+  cur->exit_status = status; //스레드 구조체 안에 종료 코드를 저장
+  printf("%s: exit(%d)\n", cur->name, status); //이름 종료코드 출력
   thread_exit ();
 }
 
@@ -180,32 +180,32 @@ syscall_handler (struct intr_frame *f)
 
     case SYS_WRITE:
       {
-        int fd = get_user_i32 ((uint8_t *) f->esp + 4);
-        const void *buf = get_user_ptr ((uint8_t *) f->esp + 8);
-        unsigned size = (unsigned) get_user_i32 ((uint8_t *) f->esp + 12);
+        int fd = get_user_i32 ((uint8_t *) f->esp + 4); //fd번호 불러옴
+        const void *buf = get_user_ptr ((uint8_t *) f->esp + 8); // 버퍼의 주소 불러옴
+        unsigned size = (unsigned) get_user_i32 ((uint8_t *) f->esp + 12); //기록할 데이터 크기 불러옴
 
         check_user_buffer (buf, size);
 
          /* 1) STDOUT: 콘솔 출력 */
-        if (fd == 1)
+        if (fd == 1) 
         {
-          putbuf (buf, size);          /* 가능한 1회 호출 */
-          f->eax = (int) size;
+          putbuf (buf, size);          /* 가능한 1회 호출 */ //커널 함수인 putbuf를 사용하여 버퍼의 내용을 콘솔 화면
+          f->eax = (int) size; //실제로 출력한 바이트 수를 사용자 프로그램에 반환하기 위해 eax 레지스터에 저장
           break;
         }
         
         /* 2) STDIN에는 write 불가 */
-        if (fd == 0)
+        if (fd == 0) 
         {
-          f->eax = -1;
+          f->eax = -1; //입력 전용 장치에 쓰기를 시도했으므로 오류
           break;
         }
 
-        /* 3) 파일 fd: file_write */
-        struct file *file = get_file_from_fdt (fd);
-        if (file == NULL)
+        /* 3) 파일 fd: file_write */ //파일에 데이터를 쓰는 경우
+        struct file *file = get_file_from_fdt (fd); 
+        if (file == NULL) //파일이 없으면
         {
-          f->eax = -1;                 /* 잘못된 fd */
+          f->eax = -1;    //오류
           break;
     }
 
