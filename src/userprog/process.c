@@ -75,6 +75,12 @@ process_execute (const char *file_name)
   
   cp->tid = TID_ERROR;
   cp->exit_status = -1;
+  /* [P2-2] wait는 1회만 허용되므로 상태 플래그 초기화 */
+  cp->waited = false;
+  /* [P2-2] 자식이 이미 종료했는지 표시*/
+  cp->exited = false;
+  /* [P2-2] cp를 부모/자식이 같이 참조하므로 참조카운트로 수명 관리 */
+  cp->ref_cnt = 2;
   sema_init (&cp->wait_sema, 0);
   list_push_back (&thread_current ()->children, &cp->elem);
   
@@ -161,21 +167,32 @@ process_wait (tid_t child_tid UNUSED)
   struct thread *cur = thread_current ();
   struct list_elem *e;
 
+  /* [P2-2] 직계 자식 목록에서 child_tid 찾기 */
   for (e = list_begin (&cur->children); e != list_end (&cur->children);
        e = list_next (e))
     {
       struct child_process *cp = list_entry (e, struct child_process, elem);
       if (cp->tid == child_tid)
         {
-          /* 자식이 종료될 때까지 대기 */
-          sema_down (&cp->wait_sema);
-          
-          /* 종료 코드 획득 */
+         /* [P2-2] wait는 자식 1개당 딱 1번만 허용 */
+          if (cp->waited)
+            return -1;
+          cp->waited = true;
+
+          /* [P2-2] 자식이 아직 종료 전이면 종료까지 대기 */
+          if (!cp->exited)
+            sema_down (&cp->wait_sema);
+
+          /* 종료 코드 회수 */
           int status = cp->exit_status;
-          
-          /* 정보 사용 후 리스트에서 제거 및 해제 */
+
+          /* 부모의 children 리스트에서 제거 */
           list_remove (&cp->elem);
-          free (cp);
+
+          /* [P2-2] 부모 참조 해제: 부모는 이제 cp가 필요 없음 */
+          cp->ref_cnt--;
+          if (cp->ref_cnt == 0)
+            free (cp);
           
           return status;
         }
@@ -207,8 +224,27 @@ process_exit (void)
   if (cur->cp != NULL)
     {
       cur->cp->exit_status = cur->exit_status;
+      cur->cp->exited = true;
       sema_up (&cur->cp->wait_sema);
+       /* 자식 참조 해제 (부모가 이미 wait로 회수했을 수도 있음) */
+      cur->cp->ref_cnt--;
+       if (cur->cp->ref_cnt == 0)
+        free (cur->cp);
+
+      cur->cp = NULL;
     }
+  /* [P2-2] (부모 역할) wait 안 하고 죽는 경우를 대비해 children 정리
+     - cp는 자식도 참조할 수 있으니 ref_cnt로 안전하게 해제 */
+  while (!list_empty (&cur->children))
+    {
+      struct list_elem *e = list_pop_front (&cur->children);
+      struct child_process *cp = list_entry (e, struct child_process, elem);
+
+      cp->ref_cnt--;                 /* 부모 참조 해제 */
+      if (cp->ref_cnt == 0)
+        free (cp);
+    }
+  
 #endif
 
   pd = cur->pagedir;
