@@ -236,9 +236,9 @@ syscall_handler (struct intr_frame *f)
 
     case SYS_CREATE:
       {
-        const char *name = get_user_ptr ((uint8_t *) f->esp + 4);
-        unsigned initial_size = (unsigned) get_user_i32 ((uint8_t *) f->esp + 8);
-        check_user_string (name);
+        const char *name = get_user_ptr ((uint8_t *) f->esp + 4); //생성할 파일의 이름 문자열 주소
+        unsigned initial_size = (unsigned) get_user_i32 ((uint8_t *) f->esp + 8); //파일의 초기 크기 정보
+        check_user_string (name); //파일 이름이 저장된 메모리 영역 검사
 
         lock_acquire (&filesys_lock);
         f->eax = filesys_create (name, initial_size);
@@ -260,28 +260,28 @@ syscall_handler (struct intr_frame *f)
     /* 프로젝트 2 테스트 통과를 위해 반드시 필요한 케이스들 */
     case SYS_OPEN:
       {
-        const char *file_name = get_user_ptr ((uint8_t *) f->esp + 4);
-        check_user_string (file_name);
-        lock_acquire (&filesys_lock);
-        struct file *file = filesys_open (file_name);
+        const char *file_name = get_user_ptr ((uint8_t *) f->esp + 4); //첫 번째 인자인 파일 이름 문자열의 주소
+        check_user_string (file_name); //파일의 메모리 영역이 유효한지 검사
+        lock_acquire (&filesys_lock); 
+        struct file *file = filesys_open (file_name); 
         lock_release (&filesys_lock);
-        if (file == NULL) f->eax = -1;
-        else f->eax = add_file_to_fdt (file);
+        if (file == NULL) f->eax = -1;  //실패
+        else f->eax = add_file_to_fdt (file); //성공 fd번호 반환
         break;
       }
 
     case SYS_READ:
       {
-        int fd = get_user_i32 ((uint8_t *) f->esp + 4);
-        void *buffer = get_user_ptr ((uint8_t *) f->esp + 8);
-        unsigned size = get_user_i32 ((uint8_t *) f->esp + 12);
-        check_user_buffer (buffer, size);
-        if (fd == 0) { // STDIN
-          for (unsigned i = 0; i < size; i++)
+        int fd = get_user_i32 ((uint8_t *) f->esp + 4); //fd번호 가져옴
+        void *buffer = get_user_ptr ((uint8_t *) f->esp + 8); //사용자의 버퍼의 주소 가져옴
+        unsigned size = get_user_i32 ((uint8_t *) f->esp + 12); //읽을 데이터의 크기 가져옴
+        check_user_buffer (buffer, size); 
+        if (fd == 0) { // 표준입력
+          for (unsigned i = 0; i < size; i++) //키보드 입력 한 바이트씩 받기
             ((uint8_t *)buffer)[i] = input_getc ();
           f->eax = size;
         } else {
-          struct file *file = get_file_from_fdt (fd);
+          struct file *file = get_file_from_fdt (fd); //현재 프로세스의 테이블에서 fd에 해당하는 파일 객체 찾기
           if (file == NULL) f->eax = -1;
           else {
             lock_acquire (&filesys_lock);
@@ -299,7 +299,7 @@ syscall_handler (struct intr_frame *f)
         if (file == NULL) f->eax = -1;
         else {
           lock_acquire (&filesys_lock);
-          f->eax = file_length (file);
+          f->eax = file_length (file); //파일의 실제 길이를 반환값으로 설정
           lock_release (&filesys_lock);
         }
         break;
@@ -309,11 +309,11 @@ syscall_handler (struct intr_frame *f)
       {
         int fd = get_user_i32 ((uint8_t *) f->esp + 4);
         struct file *file = get_file_from_fdt (fd);
-        if (file != NULL) {
+        if (file != NULL) { //존재하는 경우만 실행
           lock_acquire (&filesys_lock);
           file_close (file);
           lock_release (&filesys_lock);
-          remove_file_from_fdt (fd);
+          remove_file_from_fdt (fd); //현재 프로세스의 fd 테이블에서 해당 번호의 기록을 지움
         }
         break;
       }
