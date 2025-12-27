@@ -184,8 +184,8 @@ process_wait (tid_t child_tid)
 
           /* 리스트에서 제거 및 부모의 참조 해제 [cite: 28] */
           list_remove (&cp->elem);
-          cp->ref_cnt--;
-          if (cp->ref_cnt == 0)
+          cp->ref_cnt--; //참조횟수 감소
+          if (cp->ref_cnt == 0) //참조횟수가 0이 되면 cp해제
             free (cp);
           
           return status;
@@ -200,7 +200,7 @@ void
 process_exit (void)
 {
   struct thread *cur = thread_current ();
-  uint32_t *pd;
+  uint32_t *pd; //프로세스 페이지 디렉터리 주소 변수
 
 #ifdef USERPROG
   if (cur->pagedir != NULL) 
