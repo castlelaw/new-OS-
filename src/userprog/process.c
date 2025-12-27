@@ -162,25 +162,25 @@ int
 process_wait (tid_t child_tid)
 {
   struct thread *cur = thread_current ();
-  struct list_elem *e;
+  struct list_elem *e; //자식리스트 순회 변수
 
   /* 직계 자식인지 확인 [cite: 20, 21] */
   for (e = list_begin (&cur->children); e != list_end (&cur->children);
        e = list_next (e))
     {
-      struct child_process *cp = list_entry (e, struct child_process, elem);
-      if (cp->tid == child_tid)
+      struct child_process *cp = list_entry (e, struct child_process, elem); //자식의 cp주소 찾기
+      if (cp->tid == child_tid) 
         {
           /* 이미 wait를 호출했다면 실패 [cite: 24, 25] */
           if (cp->waited)
             return -1;
-          cp->waited = true;
+          cp->waited = true; //wait호출 명시 (중복호출방지)
 
           /* 자식이 종료될 때까지 대기 [cite: 15, 17] */
           if (!cp->exited)
             sema_down (&cp->wait_sema);
 
-          int status = cp->exit_status;
+          int status = cp->exit_status; //자식이 종료되고, 부모가 깨어났다면 자식의 종료코드 exit_status 가져옴
 
           /* 리스트에서 제거 및 부모의 참조 해제 [cite: 28] */
           list_remove (&cp->elem);
