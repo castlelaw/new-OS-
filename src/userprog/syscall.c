@@ -69,13 +69,13 @@ check_user_buffer (const void *buffer, unsigned size)
   const uint8_t *end = start + size - 1;
 
   check_user_vaddr (start);
-
-  for (const uint8_t *p = start; p <= end; p = (const uint8_t *) pg_round_down (p + PGSIZE))
-    {
-       check_user_vaddr (p); 
-    }
-    
   check_user_vaddr (end);
+  /* start가 속한 페이지부터 end가 속한 페이지까지 페이지 단위로 검사 */
+  const uint8_t *p = (const uint8_t *) pg_round_down (start);
+  while (p <= end)
+    {
+      check_user_vaddr (p);
+      p += PGSIZE;
 }
 
 /* 문자열 검사 (NULL 만날 때까지) */
@@ -183,16 +183,33 @@ syscall_handler (struct intr_frame *f)
 
         check_user_buffer (buf, size);
 
+         /* 1) STDOUT: 콘솔 출력 */
         if (fd == 1)
-          {
-            putbuf (buf, size);
-            f->eax = (int) size;
-          }
-        else
-          {
-            f->eax = -1; 
-          }
-        break;
+        {
+          putbuf (buf, size);          /* 가능한 1회 호출 */
+          f->eax = (int) size;
+          break;
+        }
+        
+        /* 2) STDIN에는 write 불가 */
+        if (fd == 0)
+        {
+          f->eax = -1;
+          break;
+        }
+
+        /* 3) 파일 fd: file_write */
+        struct file *file = get_file_from_fdt (fd);
+        if (file == NULL)
+        {
+          f->eax = -1;                 /* 잘못된 fd */
+          break;
+    }
+
+  lock_acquire (&filesys_lock);
+  f->eax = (int) file_write (file, buf, size);
+  lock_release (&filesys_lock);
+  break;
       }
 
     case SYS_EXEC:
