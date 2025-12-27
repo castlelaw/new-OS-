@@ -29,7 +29,7 @@ static bool install_page (void *upage, void *kpage, bool writable);
 
 /* 프로세스 실행 간 동기화를 위한 구조체 [cite: 14] */
 struct exec_info {
-  char *cmdline;
+  char *cmdline;              //시스템 콜에 전달된 전체 명령행 문자열을 자식 스레드에 전달하기 위해 저장
   struct semaphore done;      /* 자식의 로드 완료를 대기하기 위한 세마포어 [cite: 13] */
   bool success;               /* 로딩 성공 여부 [cite: 12] */
   struct child_process *cp;   /* 부모-자식 간 공유할 메타데이터 [cite: 21] */
@@ -39,36 +39,36 @@ struct exec_info {
 tid_t
 process_execute (const char *file_name)
 {
-  char *fn_copy;
-  tid_t tid;
+  char *fn_copy; //명령행 문자열 저장
+  tid_t tid; //생성된 스레드의 id
 
   /* 파일 이름 복사 */
-  fn_copy = palloc_get_page (0);
-  if (fn_copy == NULL)
+  fn_copy = palloc_get_page (0); //커널의 새 페이지 할당
+  if (fn_copy == NULL) //페이지 할당 성공 검사
     return TID_ERROR;
-  strlcpy (fn_copy, file_name, PGSIZE);
+  strlcpy (fn_copy, file_name, PGSIZE); //file_name을 커널 페이지로 복사
 
   /* 프로그램 이름만 추출 (thread_create용) */
   char name_copy[16];
   strlcpy (name_copy, file_name, sizeof name_copy);
-  char *save_ptr;
-  char *prog_name = strtok_r (name_copy, " ", &save_ptr);
+  char *save_ptr; 
+  char *prog_name = strtok_r (name_copy, " ", &save_ptr); //순수 프로그램 이름
 
   /* 실행 정보 및 자식 메타데이터 할당 [cite: 165] */
-  struct exec_info *info = malloc (sizeof (struct exec_info));
-  struct child_process *cp = malloc (sizeof (struct child_process));
+  struct exec_info *info = malloc (sizeof (struct exec_info)); //부모와 자식 간의 동기화 상태를 추적할 동적 메모리 할당
+  struct child_process *cp = malloc (sizeof (struct child_process)); //동적 메모리에 자원 할당
   
-  if (info == NULL || cp == NULL) 
+  if (info == NULL || cp == NULL) //동적 메모리 할당 성공 여부 
     {
-      if (fn_copy) palloc_free_page (fn_copy);
-      if (info) free (info);
-      if (cp) free (cp);
-      return TID_ERROR;
+      if (fn_copy) palloc_free_page (fn_copy); //할당 실패시 커널 페이지 즉시 반환
+      if (info) free (info); //info 해제
+      if (cp) free (cp); //cp해제
+      return TID_ERROR; //에러값 반환
     }
   
-  info->cmdline = fn_copy;
-  info->success = false;
-  sema_init (&info->done, 0);
+  info->cmdline = fn_copy; //복사한 명령행 info구조체에 저장
+  info->success = false; //실패로 초기화
+  sema_init (&info->done, 0); //세마포어 초기화
 
   /* 자식 메타데이터 초기화 [cite: 19] */
   cp->tid = TID_ERROR;
@@ -76,11 +76,11 @@ process_execute (const char *file_name)
   cp->waited = false;         /* wait 중복 호출 방지 [cite: 24, 25] */
   cp->exited = false;
   cp->ref_cnt = 2;            /* 부모와 자식이 각각 하나씩 참조 [cite: 28, 165] */
-  sema_init (&cp->wait_sema, 0);
+  sema_init (&cp->wait_sema, 0); //부모가 wait(pid)를 호출했을 때 자식이 죽을 때까지 기다리기 위한 전용 세마포어
   
   /* 부모의 자식 리스트에 추가 [cite: 20] */
   list_push_back (&thread_current ()->children, &cp->elem);
-  info->cp = cp;
+  info->cp = cp; //동기화 구조체에 자식 메타데이터 주소를 연결
 
   /* 스레드 생성 */
   tid = thread_create (prog_name, PRI_DEFAULT, start_process, info);
@@ -94,7 +94,7 @@ process_execute (const char *file_name)
       return TID_ERROR;
     }
   
-  cp->tid = tid;
+  cp->tid = tid; //성공적으로 생성된 스레드의 ID를 메타데이터에 기록
 
   /* 자식이 load를 성공/실패 할 때까지 대기  */
   sema_down (&info->done);
