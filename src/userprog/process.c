@@ -203,52 +203,51 @@ process_exit (void)
   uint32_t *pd; //프로세스 페이지 디렉터리 주소 변수
 
 #ifdef USERPROG
-  if (cur->pagedir != NULL) 
+  if (cur->pagedir != NULL) //현재 프로세스가 사용자 프로세스인지 확인
     {
-      /* 종료 상태 출력 [cite: 17] */
+      /* 자식이 exit()에 전달한 종료 상태 출력 [cite: 17] */
       printf ("%s: exit(%d)\n", cur->name, cur->exit_status);
     }
     
-  if (cur->bin_file != NULL)
+  if (cur->bin_file != NULL) //현재 실행중인 파일 존재 확인
     {
-      /* 실행 파일 닫기 (이때 쓰기 금지가 자동 해제됨) [cite: 85] */
       lock_acquire (&filesys_lock);
-      file_close (cur->bin_file);
+      file_close (cur->bin_file); //파일 닫기
       lock_release (&filesys_lock);
-      cur->bin_file = NULL;
+      cur->bin_file = NULL; //실행 포인터 해지
     }
 
   /* 부모에게 종료 알림 [cite: 16, 19] */
-  if (cur->cp != NULL)
+  if (cur->cp != NULL) //부모와 공유하는 메타데이터의 여부 확인
     {
-      cur->cp->exit_status = cur->exit_status;
-      cur->cp->exited = true;
-      sema_up (&cur->cp->wait_sema);
+      cur->cp->exit_status = cur->exit_status; //자신의 종료상태 저장->부모가 알 수 있도록
+      cur->cp->exited = true; //종료상태 표시
+      sema_up (&cur->cp->wait_sema); //부모 깨우기
       
       /* 자신의 메타데이터 참조 해제 [cite: 28, 29] */
-      cur->cp->ref_cnt--;
+      cur->cp->ref_cnt--; //참조횟수 감소
       if (cur->cp->ref_cnt == 0)
-        free (cur->cp);
-      cur->cp = NULL;
+        free (cur->cp); //동적 메모리에 할당된 cp해제
+      cur->cp = NULL; //cp초기화
     }
 
   /* 내가 생성한 자식들 정리 (부모의 책임) [cite: 27, 28] */
   while (!list_empty (&cur->children))
     {
-      struct list_elem *e = list_pop_front (&cur->children);
-      struct child_process *cp = list_entry (e, struct child_process, elem);
-      cp->ref_cnt--;
+      struct list_elem *e = list_pop_front (&cur->children); //자식리스트 하나씩 꺼내기
+      struct child_process *cp = list_entry (e, struct child_process, elem); //꺼낸 요소로부터 메타데이터 꺼내기
+      cp->ref_cnt--; //참조횟수 감소
       if (cp->ref_cnt == 0)
-        free (cp);
+        free (cp); //cp해제
     }
 #endif
 
   pd = cur->pagedir;
   if (pd != NULL)
     {
-      cur->pagedir = NULL;
-      pagedir_activate (NULL);
-      pagedir_destroy (pd);
+      cur->pagedir = NULL; //스레드 구조체 내의 페이지 디렉터리 연결을 끊음
+      pagedir_activate (NULL); //현재 페이지 테이블을 커널전용으로 변경
+      pagedir_destroy (pd);  //페이지 디렉토리 파괴
     }
 }
 
