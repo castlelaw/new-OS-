@@ -60,22 +60,24 @@ check_user_vaddr (const void *uaddr)
 
 /* 버퍼 전체 영역 검사 (페이지 경계 포함) */
 static void
+static void
 check_user_buffer (const void *buffer, unsigned size)
 {
-  if (size == 0)
-    return;
+  if (size == 0) return;
 
   const uint8_t *start = (const uint8_t *) buffer;
   const uint8_t *end = start + size - 1;
 
   check_user_vaddr (start);
   check_user_vaddr (end);
-  /* start가 속한 페이지부터 end가 속한 페이지까지 페이지 단위로 검사 */
+  
   const uint8_t *p = (const uint8_t *) pg_round_down (start);
   while (p <= end)
     {
       check_user_vaddr (p);
+      if (end - p < PGSIZE) break; 
       p += PGSIZE;
+    }
 }
 
 /* 문자열 검사 (NULL 만날 때까지) */
@@ -151,6 +153,7 @@ exit (int status)
   struct thread *cur = thread_current ();
   /* [FIX] cur->exited 제거됨 */
   cur->exit_status = status;
+  printf("%s: exit(%d)\n", cur->name, status);
   thread_exit ();
 }
 
@@ -251,6 +254,67 @@ syscall_handler (struct intr_frame *f)
         lock_acquire (&filesys_lock);
         f->eax = filesys_remove (name);
         lock_release (&filesys_lock);
+        break;
+      }
+
+    /* 프로젝트 2 테스트 통과를 위해 반드시 필요한 케이스들 */
+    case SYS_OPEN:
+      {
+        const char *file_name = get_user_ptr ((uint8_t *) f->esp + 4);
+        check_user_string (file_name);
+        lock_acquire (&filesys_lock);
+        struct file *file = filesys_open (file_name);
+        lock_release (&filesys_lock);
+        if (file == NULL) f->eax = -1;
+        else f->eax = add_file_to_fdt (file);
+        break;
+      }
+
+    case SYS_READ:
+      {
+        int fd = get_user_i32 ((uint8_t *) f->esp + 4);
+        void *buffer = get_user_ptr ((uint8_t *) f->esp + 8);
+        unsigned size = get_user_i32 ((uint8_t *) f->esp + 12);
+        check_user_buffer (buffer, size);
+        if (fd == 0) { // STDIN
+          for (unsigned i = 0; i < size; i++)
+            ((uint8_t *)buffer)[i] = input_getc ();
+          f->eax = size;
+        } else {
+          struct file *file = get_file_from_fdt (fd);
+          if (file == NULL) f->eax = -1;
+          else {
+            lock_acquire (&filesys_lock);
+            f->eax = file_read (file, buffer, size);
+            lock_release (&filesys_lock);
+          }
+        }
+        break;
+      }
+
+    case SYS_FILESIZE:
+      {
+        int fd = get_user_i32 ((uint8_t *) f->esp + 4);
+        struct file *file = get_file_from_fdt (fd);
+        if (file == NULL) f->eax = -1;
+        else {
+          lock_acquire (&filesys_lock);
+          f->eax = file_length (file);
+          lock_release (&filesys_lock);
+        }
+        break;
+      }
+
+    case SYS_CLOSE:
+      {
+        int fd = get_user_i32 ((uint8_t *) f->esp + 4);
+        struct file *file = get_file_from_fdt (fd);
+        if (file != NULL) {
+          lock_acquire (&filesys_lock);
+          file_close (file);
+          lock_release (&filesys_lock);
+          remove_file_from_fdt (fd);
+        }
         break;
       }
 
