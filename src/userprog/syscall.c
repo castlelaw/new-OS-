@@ -29,18 +29,18 @@ static int32_t get_user_i32 (const void *uaddr);
 static void *get_user_ptr (const void *uaddr);
 
 /* 파일 디스크립터 헬퍼 함수 */
-static int add_file_to_fdt (struct file *file);
-static struct file *get_file_from_fdt (int fd);
-static void remove_file_from_fdt (int fd);
+static int add_file_to_fdt (struct file *file); //fd 번호 부여
+static struct file *get_file_from_fdt (int fd); //fd 번호를 통해 파일 주소 찾음
+static void remove_file_from_fdt (int fd); //fd 번호 삭제
 
 /* 전방 선언 */
-void exit (int status);
+void exit (int status); //프로세스 종료, 종료상태 코드 커널에 전달
 
 void
-syscall_init (void)
+syscall_init (void) 
 {
-  lock_init (&filesys_lock);
-  intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
+  lock_init (&filesys_lock); //락을 사용 가능한 상태로 초기화
+  intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall"); //syscall_handler호출
 }
 
 /* 주소 유효성 검사: 유저 영역인지 + 매핑된 페이지인지 */
@@ -111,17 +111,17 @@ get_user_ptr (const void *uaddr)
 /* --- 파일 디스크립터 관리 헬퍼 --- */
 
 static int
-add_file_to_fdt (struct file *file)
+add_file_to_fdt (struct file *file) //fd 번호 부여
 {
-  struct thread *cur = thread_current ();
+  struct thread *cur = thread_current (); //현재 스레드의 정보를 저장
   /* fd 2부터 시작 (0: stdin, 1: stdout) */
   /* thread.h 수정 시 fd_table이 추가되었으므로 사용 가능 */
   
-  for (int i = 2; i < 128; i++) 
+  for (int i = 2; i < 128; i++) //0번은 표준 입력, 1번은 표준 출력
     {
-      if (cur->fd_table[i] == NULL)
+      if (cur->fd_table[i] == NULL) 
         {
-          cur->fd_table[i] = file;
+          cur->fd_table[i] = file; //파일의 주소값 저장
           return i;
         }
     }
@@ -129,21 +129,21 @@ add_file_to_fdt (struct file *file)
 }
 
 static struct file *
-get_file_from_fdt (int fd)
+get_file_from_fdt (int fd) //fd 번호를 통해 파일 주소 찾음
 {
   struct thread *cur = thread_current ();
-  if (fd < 2 || fd >= 128)
+  if (fd < 2 || fd >= 128) //fd번호 검사
     return NULL;
-  return cur->fd_table[fd];
+  return cur->fd_table[fd]; //파일주소 반환
 }
 
 static void
-remove_file_from_fdt (int fd)
+remove_file_from_fdt (int fd) //fd 번호 삭제
 {
   struct thread *cur = thread_current ();
-  if (fd < 2 || fd >= 128)
+  if (fd < 2 || fd >= 128) //fd번호 검사
     return;
-  cur->fd_table[fd] = NULL;
+  cur->fd_table[fd] = NULL; //해당 칸을 null로 덮어씀
 }
 
 /* syscall.c 내에서 사용할 간편 exit 함수 */
