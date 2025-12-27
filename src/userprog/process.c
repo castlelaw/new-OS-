@@ -111,25 +111,25 @@ process_execute (const char *file_name)
 static void
 start_process (void *aux_)
 {
-  struct exec_info *info = aux_;
-  char *cmdline = info->cmdline; 
-  struct intr_frame if_;
+  struct exec_info *info = aux_; //info를 가져옴
+  char *cmdline = info->cmdline; //로컬변수에 info에 저장된 명령행 문자열 주소 저장
+  struct intr_frame if_; //cpu 레지스터 상태 저장 변수
   bool success;
 
 #ifdef USERPROG
-  struct thread *cur = thread_current ();
-  cur->exit_status = -1;
-  cur->load_success = false;
+  struct thread *cur = thread_current (); 
+  cur->exit_status = -1; //초기 상태
+  cur->load_success = false; 
   cur->cp = info->cp;         /* 부모가 전달한 메타데이터 연결 */
 #endif
 
-  memset (&if_, 0, sizeof if_);
-  if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
+  memset (&if_, 0, sizeof if_); //인터럽트 프레임 0
+  if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG; //
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
 
   /* 파일 로드 시 시스템 락 보호 [cite: 165] */
-  lock_acquire (&filesys_lock);
+  lock_acquire (&filesys_lock); 
   success = load (cmdline, &if_.eip, &if_.esp);
   lock_release (&filesys_lock);
 
@@ -140,20 +140,20 @@ start_process (void *aux_)
         success = false;
     }
 
-  palloc_free_page (cmdline);
+  palloc_free_page (cmdline); 
 
-  info->success = success;
+  info->success = success; //부모가 기다리고 있는 info 구조체에 로드 결과를 기록
 #ifdef USERPROG
-  cur->load_success = success;
+  cur->load_success = success; //현재 스레드 정보에도 로드 성공 여부
 #endif
 
   /* 부모에게 로드 결과 전달 [cite: 13] */
-  sema_up (&info->done);
+  sema_up (&info->done); //로드 과정이 끝났음을 부모에게 알려, 대기 중이던 부모 스레드가 exec 호출에서 깨어나게 함
 
   if (!success) 
     thread_exit ();
 
-  asm volatile ("movl %0, %%esp; jmp intr_exit" : : "g" (&if_) : "memory");
+  asm volatile ("movl %0, %%esp; jmp intr_exit" : : "g" (&if_) : "memory"); //설정된 인터럽트 프레임을 사용하여 사용자 모드로 점프하고 프로그램을 실행
   NOT_REACHED ();
 }
 
