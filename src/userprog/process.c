@@ -22,6 +22,30 @@
 
 extern struct lock filesys_lock;
 
+/*  구조체 정의를 파일의 가장 윗부분으로 이동 */
+/*  아래 함수 원형에서 이 구조체를 인식 */
+typedef uint32_t Elf32_Word, Elf32_Addr, Elf32_Off;
+typedef uint16_t Elf32_Half;
+
+struct Elf32_Ehdr {
+    unsigned char e_ident[16]; Elf32_Half e_type; Elf32_Half e_machine;
+    Elf32_Word e_version; Elf32_Addr e_entry; Elf32_Off e_phoff;
+    Elf32_Off e_shoff; Elf32_Word e_flags; Elf32_Half e_ehsize;
+    Elf32_Half e_phentsize; Elf32_Half e_phnum; Elf32_Half e_shentsize;
+    Elf32_Half e_shnum; Elf32_Half e_shstrndx;
+};
+
+struct Elf32_Phdr {
+    Elf32_Word p_type; Elf32_Off p_offset; Elf32_Addr p_vaddr;
+    Elf32_Addr p_paddr; Elf32_Word p_filesz; Elf32_Word p_memsz;
+    Elf32_Word p_flags; Elf32_Word p_align;
+};
+
+#define PT_LOAD 1
+#define PF_W 2
+
+/*  함수 원형 선언 (구조체 정의 바로 아래에 위치) */
+
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
 static bool push_arguments (void **esp, const char *cmdline);
@@ -249,7 +273,7 @@ process_exit (void)
 
   lock_release (&filesys_lock);
 
-  /*  FDT 메모리 해제 (락 밖에서 수행해도 안전) */
+  /* FDT 메모리 해제 (락 밖에서 수행해도 안전) */
   if (cur->fd_table != NULL)
     {
       palloc_free_page (cur->fd_table);
@@ -297,24 +321,6 @@ process_activate (void)
   pagedir_activate (t->pagedir);
   tss_update ();
 }
-
-/* ELF 관련 타입 정의 */
-typedef uint32_t Elf32_Word, Elf32_Addr, Elf32_Off;
-typedef uint16_t Elf32_Half;
-struct Elf32_Ehdr {
-    unsigned char e_ident[16]; Elf32_Half e_type; Elf32_Half e_machine;
-    Elf32_Word e_version; Elf32_Addr e_entry; Elf32_Off e_phoff;
-    Elf32_Off e_shoff; Elf32_Word e_flags; Elf32_Half e_ehsize;
-    Elf32_Half e_phentsize; Elf32_Half e_phnum; Elf32_Half e_shentsize;
-    Elf32_Half e_shnum; Elf32_Half e_shstrndx;
-};
-struct Elf32_Phdr {
-    Elf32_Word p_type; Elf32_Off p_offset; Elf32_Addr p_vaddr;
-    Elf32_Addr p_paddr; Elf32_Word p_filesz; Elf32_Word p_memsz;
-    Elf32_Word p_flags; Elf32_Word p_align;
-};
-#define PT_LOAD 1
-#define PF_W 2
 
 /* 로드 함수 */
 bool
