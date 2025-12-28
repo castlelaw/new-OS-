@@ -55,17 +55,13 @@ kill (struct intr_frame *f)
          expected.  Kill the user process.  */
       {
         struct thread *cur = thread_current ();
-        /* 프로젝트 요구사항에 따라 종료 상태를 -1로 설정하고 메시지 출력 */
+        /* 종료 상태를 -1로 설정 */
         cur->exit_status = -1;
-        printf("%s: exit(-1)\n", cur->name); //프로세스의 종료 상태와 이름 출력
-        thread_exit ();
+        thread_exit (); 
       }
 
     case SEL_KCSEG:
-      /* Kernel's code segment, which indicates a kernel bug.
-         Kernel code shouldn't throw exceptions.  (Page faults
-         may cause kernel exceptions--but they're handled
-         elsewhere.) */
+      /* Kernel's code segment, which indicates a kernel bug. */
       intr_dump_frame (f);
       PANIC ("Kernel bug - unexpected interrupt in kernel");
 
@@ -85,13 +81,10 @@ page_fault (struct intr_frame *f)
   void *fault_addr;  /* Fault address. */
 
   /* Obtain faulting address, the virtual address that was
-     accessed to cause the fault.  It may point to code or to
-     data.  It is not necessarily the address of the instruction
-     that caused the fault (that's f->eip). */
+     accessed to cause the fault. */
   asm ("movl %%cr2, %0" : "=r" (fault_addr));
 
-  /* Turn interrupts back on (they were only off so that we could
-     be assured of reading CR2 before it changed). */
+  /* Turn interrupts back on. */
   intr_enable ();
 
   /* Count page faults. */
@@ -102,21 +95,23 @@ page_fault (struct intr_frame *f)
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
 
-  /* 프로젝트 2-2: 사용자 모드 혹은 잘못된 주소 접근 시 
-     프로세스를 종료하고 -1을 반환하도록 로직 강화 */
-  if (user) //사용자 프로그램에서의 오류
+  /*  사용자 모드 혹은 잘못된 주소 접근 시 
+     프로세스를 종료하고 -1을 반환 */
+  
+  /* user 플래그가 true이면 사용자 모드에서의 예외입니다. */
+  if (user) 
     {
       struct thread *cur = thread_current ();
       cur->exit_status = -1;
-      printf("%s: exit(-1)\n", cur->name);
       thread_exit ();
     }
 
   /* 커널 모드에서의 page fault 유형 출력 및 종료 */
+  /* 여기는 커널 버그 상황이므로 출력해도 됨 (사용자 테스트와 무관) */
   printf ("Page fault at %p: %s error %s page in %s context.\n", 
           fault_addr,
           not_present ? "not present" : "rights violation",
           write ? "writing" : "reading",
           user ? "user" : "kernel");
-  kill (f); //프로세스 완전히 중단
+  kill (f); 
 }
