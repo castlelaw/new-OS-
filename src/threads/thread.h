@@ -25,14 +25,12 @@ typedef int tid_t;
 #define PRI_MAX 63
 
 /*  자식 프로세스 정보를 담는 구조체
-   - 부모 thread의 children 리스트에 매달려 있음
-
-   - wait()는 "자식 1개당 딱 1번"만 가능해야 하므로 waited 플래그 필요
-
-   - 자식이 이미 종료했는지 여부(exited)를 기록해두면 process_wait 구현이 더 안전해짐 */
+    부모 thread의 children 리스트에 매달려 있음
+    wait()는 "자식 1개당 딱 1번"만 가능해야 하므로 waited 플래그 필요
+    자식이 이미 종료했는지 여부(exited)를 기록해두면 process_wait 구현이 더 안전해짐 */
 
 struct child_process {
-    tid_t tid;                 /* 자식 스레드 ID */
+    tid_t tid;                 /* 자식 스레드  ID */
     int exit_status;           /* 자식 종료 코드 (exit(status) 또는 -1) */
 
     bool waited;               /* 부모가 이미 wait() 했는지 (1회 제한용) */
@@ -64,7 +62,7 @@ struct thread
     bool load_success;
     struct file *bin_file;     /* 실행 중인 파일 */
 
-    /* [P2-1 FIX] 자식 관리 필드 */
+    /* 자식 관리 필드 */
     struct list children;      /* 자식 프로세스 목록 (struct child_process) */
     struct child_process *cp;  /* 나 자신의 메타데이터 포인터 (부모가 만들어준 것) */
     
