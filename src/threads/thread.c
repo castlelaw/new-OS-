@@ -125,6 +125,17 @@ thread_create (const char *name, int priority,
     return TID_ERROR;
 
   init_thread (t, name, priority);
+#ifdef USERPROG
+  /* PAL_ZERO를 사용하여 메모리를 0으로 초기화 
+     -> 모든 fd 칸이 NULL이 됨 (쓰레기 값 방지) 
+  */
+  t->fd_table = palloc_get_page(PAL_ZERO); 
+  
+  if (t->fd_table == NULL) {
+    palloc_free_page(t); // 스레드 메모리도 반납
+    return TID_ERROR;
+  }
+#endif
   tid = t->tid = allocate_tid ();
 
   kf = alloc_frame (t, sizeof *kf);

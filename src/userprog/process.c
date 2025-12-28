@@ -151,25 +151,17 @@ start_process (void *aux_)
   cur->load_success = false; 
   cur->cp = info->cp;         /* 부모가 전달한 메타데이터 연결 */
 
-  /* 파일 디스크립터 테이블(FDT) 할당 */
-  /* PAL_ZERO를 사용하여 모든 포인터를 NULL로 초기화 */
-  cur->fd_table = palloc_get_page (PAL_USER | PAL_ZERO);
-  if (cur->fd_table == NULL)
-    {
-       success = false; // 메모리 할당 실패 시 로드 실패 처리
-    }
-  else
-    {
-       memset (&if_, 0, sizeof if_); //인터럽트 프레임 0
-       if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG; //
-       if_.cs = SEL_UCSEG;
-       if_.eflags = FLAG_IF | FLAG_MBS;
+  
+  memset (&if_, 0, sizeof if_); //인터럽트 프레임 0
+  if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG; //
+  if_.cs = SEL_UCSEG;
+  if_.eflags = FLAG_IF | FLAG_MBS;
 
        /* 파일 로드 시 시스템 락 보호 */
-       lock_acquire (&filesys_lock); 
-       success = load (cmdline, &if_.eip, &if_.esp);
-       lock_release (&filesys_lock);
-    }
+  lock_acquire (&filesys_lock); 
+  success = load (cmdline, &if_.eip, &if_.esp);
+  lock_release (&filesys_lock);
+    
 #endif
 
   if (success) 
