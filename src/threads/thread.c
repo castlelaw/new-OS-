@@ -331,9 +331,13 @@ init_thread (struct thread *t, const char *name, int priority)
   t->load_success = false;
   t->bin_file = NULL;
   
-  /* [P2-1 FIX] 자식 리스트 초기화 */
+  /*  자식 리스트 초기화 */
   list_init (&t->children);
   t->cp = NULL;
+
+  /*  파일 디스크립터 테이블 포인터 초기화 */
+  /* 실제 할당은 process.c/start_process에서 palloc으로 수행됨 */
+  t->fd_table = NULL;
 #endif
 
   old_level = intr_disable ();
