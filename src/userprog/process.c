@@ -22,8 +22,8 @@
 
 extern struct lock filesys_lock;
 
-/*  구조체 정의를 파일의 가장 윗부분으로 이동 */
-/*  아래 함수 원형에서 이 구조체를 인식 */
+/* 구조체 정의를 파일의 가장 윗부분으로 이동 */
+/* 아래 함수 원형에서 이 구조체를 인식 */
 typedef uint32_t Elf32_Word, Elf32_Addr, Elf32_Off;
 typedef uint16_t Elf32_Half;
 
@@ -44,7 +44,7 @@ struct Elf32_Phdr {
 #define PT_LOAD 1
 #define PF_W 2
 
-/*  함수 원형 선언 (구조체 정의 바로 아래에 위치) */
+/* 함수 원형 선언 (구조체 정의 바로 아래에 위치) */
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -344,7 +344,13 @@ load (const char *file_name, void (**eip) (void), void **esp)
   char *prog_name = strtok_r (fn_copy, " ", &save_ptr);     //실제 파일이름만 추출
 
   file = filesys_open (prog_name);                         //실행 파일 찾아서 열기
-  if (file == NULL) goto done;                           
+  
+  /* 파일 열기 실패 시 메시지 출력 */
+  if (file == NULL) 
+    {
+      printf ("load: %s: open failed\n", file_name);
+      goto done; 
+    }                          
 
   /* 실행 파일 쓰기 금지 설정 */
   file_deny_write (file);
