@@ -326,25 +326,25 @@ load (const char *file_name, void (**eip) (void), void **esp)
               uint32_t mem_page = phdr.p_vaddr & ~PGMASK;       //가상 메모리 페이지 주소 계산
               uint32_t page_offset = phdr.p_vaddr & PGMASK;    //오프셋 계산
               uint32_t read_bytes, zero_bytes;                 //파일을 실제 읽을 크기, 0으로 채울 크기 계산
-              if (phdr.p_filesz > 0) { 
-                  read_bytes = page_offset + phdr.p_filesz;
-                  zero_bytes = (ROUND_UP (page_offset + phdr.p_memsz, PGSIZE) - read_bytes);
+              if (phdr.p_filesz > 0) {                         //파일에서 읽어올 내용이 있는지      
+                  read_bytes = page_offset + phdr.p_filesz;    //페이지 시작+실제 파일데이터 크기
+                  zero_bytes = (ROUND_UP (page_offset + phdr.p_memsz, PGSIZE) - read_bytes);  //0으로 채울 공간의 크기 계산
               } else {
-                  read_bytes = 0;
-                  zero_bytes = ROUND_UP (page_offset + phdr.p_memsz, PGSIZE);
+                  read_bytes = 0;          
+                  zero_bytes = ROUND_UP (page_offset + phdr.p_memsz, PGSIZE);    //해당페이지 전체 0으로 채움
               }
-              if (!load_segment (file, file_page, (void *) mem_page, read_bytes, zero_bytes, writable))
+              if (!load_segment (file, file_page, (void *) mem_page, read_bytes, zero_bytes, writable))    //실제 메모리 할당 및 적재
                 goto done;
             } else goto done;
         }
     }
 
-  if (!setup_stack (esp)) goto done;
-  *eip = (void (*) (void)) ehdr.e_entry;
+  if (!setup_stack (esp)) goto done;     //사용자 프로그램이 사용할 스택 영역 할당
+  *eip = (void (*) (void)) ehdr.e_entry; //프로그램의 진입점 저장
   success = true;
 
 done:
-  if (success) t->bin_file = file; 
+  if (success) t->bin_file = file; //파일 객체 주소 보관관
   else file_close (file);
   return success;
 }
