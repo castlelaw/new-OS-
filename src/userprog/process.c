@@ -27,12 +27,12 @@ static bool load (const char *cmdline, void (**eip) (void), void **esp);
 static bool push_arguments (void **esp, const char *cmdline);
 static bool install_page (void *upage, void *kpage, bool writable);
 
-/* 프로세스 실행 간 동기화를 위한 구조체 [cite: 14] */
+/* 프로세스 실행 간 동기화를 위한 구조체 */
 struct exec_info {
   char *cmdline;              //시스템 콜에 전달된 전체 명령행 문자열을 자식 스레드에 전달하기 위해 저장
-  struct semaphore done;      /* 자식의 로드 완료를 대기하기 위한 세마포어 [cite: 13] */
-  bool success;               /* 로딩 성공 여부 [cite: 12] */
-  struct child_process *cp;   /* 부모-자식 간 공유할 메타데이터 [cite: 21] */
+  struct semaphore done;      /* 자식의 로드 완료를 대기하기 위한 세마포어 */
+  bool success;               /* 로딩 성공 여부 */
+  struct child_process *cp;   /* 부모-자식 간 공유할 메타데이터 */
 };
 
 /* Starts a new thread running a user program loaded from FILENAME. */
@@ -54,7 +54,7 @@ process_execute (const char *file_name)
   char *save_ptr; 
   char *prog_name = strtok_r (name_copy, " ", &save_ptr); //순수 프로그램 이름
 
-  /* 실행 정보 및 자식 메타데이터 할당 [cite: 165] */
+  /* 실행 정보 및 자식 메타데이터 할당 */
   struct exec_info *info = malloc (sizeof (struct exec_info)); //부모와 자식 간의 동기화 상태를 추적할 동적 메모리 할당
   struct child_process *cp = malloc (sizeof (struct child_process)); //동적 메모리에 자원 할당
   
@@ -70,15 +70,15 @@ process_execute (const char *file_name)
   info->success = false; //실패로 초기화
   sema_init (&info->done, 0); //세마포어 초기화
 
-  /* 자식 메타데이터 초기화 [cite: 19] */
+  /* 자식 메타데이터 초기화 */
   cp->tid = TID_ERROR;
   cp->exit_status = -1;
-  cp->waited = false;         /* wait 중복 호출 방지 [cite: 24, 25] */
+  cp->waited = false;         /* wait 중복 호출 방지 */
   cp->exited = false;
-  cp->ref_cnt = 2;            /* 부모와 자식이 각각 하나씩 참조 [cite: 28, 165] */
+  cp->ref_cnt = 2;            /* 부모와 자식이 각각 하나씩 참조 */
   sema_init (&cp->wait_sema, 0); //부모가 wait(pid)를 호출했을 때 자식이 죽을 때까지 기다리기 위한 전용 세마포어
   
-  /* 부모의 자식 리스트에 추가 [cite: 20] */
+  /* 부모의 자식 리스트에 추가 */
   list_push_back (&thread_current ()->children, &cp->elem);
   info->cp = cp; //동기화 구조체에 자식 메타데이터 주소를 연결
 
@@ -99,7 +99,7 @@ process_execute (const char *file_name)
   /* 자식이 load를 성공/실패 할 때까지 대기  */
   sema_down (&info->done);
 
-  /* 자식 로드 실패 시 [cite: 12] */
+  /* 자식 로드 실패 시 */
   if (!info->success)
     tid = TID_ERROR;
 
@@ -121,21 +121,31 @@ start_process (void *aux_)
   cur->exit_status = -1; //초기 상태
   cur->load_success = false; 
   cur->cp = info->cp;         /* 부모가 전달한 메타데이터 연결 */
+
+  /* 파일 디스크립터 테이블(FDT) 할당 */
+  /* PAL_ZERO를 사용하여 모든 포인터를 NULL로 초기화 */
+  cur->fd_table = palloc_get_page (PAL_USER | PAL_ZERO);
+  if (cur->fd_table == NULL)
+    {
+       success = false; // 메모리 할당 실패 시 로드 실패 처리
+    }
+  else
+    {
+       memset (&if_, 0, sizeof if_); //인터럽트 프레임 0
+       if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG; //
+       if_.cs = SEL_UCSEG;
+       if_.eflags = FLAG_IF | FLAG_MBS;
+
+       /* 파일 로드 시 시스템 락 보호 */
+       lock_acquire (&filesys_lock); 
+       success = load (cmdline, &if_.eip, &if_.esp);
+       lock_release (&filesys_lock);
+    }
 #endif
-
-  memset (&if_, 0, sizeof if_); //인터럽트 프레임 0
-  if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG; //
-  if_.cs = SEL_UCSEG;
-  if_.eflags = FLAG_IF | FLAG_MBS;
-
-  /* 파일 로드 시 시스템 락 보호 [cite: 165] */
-  lock_acquire (&filesys_lock); 
-  success = load (cmdline, &if_.eip, &if_.esp);
-  lock_release (&filesys_lock);
 
   if (success) 
     {
-      /* 스택에 인자 설정 [cite: 179, 180] */
+      /* 스택에 인자 설정 */
       if (!push_arguments (&if_.esp, cmdline))
         success = false;
     }
@@ -147,7 +157,7 @@ start_process (void *aux_)
   cur->load_success = success; //현재 스레드 정보에도 로드 성공 여부
 #endif
 
-  /* 부모에게 로드 결과 전달 [cite: 13] */
+  /* 부모에게 로드 결과 전달 */
   sema_up (&info->done); //로드 과정이 끝났음을 부모에게 알려, 대기 중이던 부모 스레드가 exec 호출에서 깨어나게 함
 
   if (!success) 
@@ -164,25 +174,25 @@ process_wait (tid_t child_tid)
   struct thread *cur = thread_current ();
   struct list_elem *e; //자식리스트 순회 변수
 
-  /* 직계 자식인지 확인 [cite: 20, 21] */
+  /* 직계 자식인지 확인 */
   for (e = list_begin (&cur->children); e != list_end (&cur->children);
        e = list_next (e))
     {
       struct child_process *cp = list_entry (e, struct child_process, elem); //자식의 cp주소 찾기
       if (cp->tid == child_tid) 
         {
-          /* 이미 wait를 호출했다면 실패 [cite: 24, 25] */
+          /* 이미 wait를 호출했다면 실패 */
           if (cp->waited)
             return -1;
           cp->waited = true; //wait호출 명시 (중복호출방지)
 
-          /* 자식이 종료될 때까지 대기 [cite: 15, 17] */
+          /* 자식이 종료될 때까지 대기 */
           if (!cp->exited)
             sema_down (&cp->wait_sema);
 
           int status = cp->exit_status; //자식이 종료되고, 부모가 깨어났다면 자식의 종료코드 exit_status 가져옴
 
-          /* 리스트에서 제거 및 부모의 참조 해제 [cite: 28] */
+          /* 리스트에서 제거 및 부모의 참조 해제 */
           list_remove (&cp->elem);
           cp->ref_cnt--; //참조횟수 감소
           if (cp->ref_cnt == 0) //참조횟수가 0이 되면 cp해제
@@ -192,7 +202,7 @@ process_wait (tid_t child_tid)
         }
     }
     
-  return -1; /* 직계 자식이 아님 [cite: 20] */
+  return -1; /* 직계 자식이 아님 */
 }
 
 /* Free the current process's resources. */
@@ -205,33 +215,57 @@ process_exit (void)
 #ifdef USERPROG
   if (cur->pagedir != NULL) //현재 프로세스가 사용자 프로세스인지 확인
     {
-      /* 자식이 exit()에 전달한 종료 상태 출력 [cite: 17] */
+      /* 자식이 exit()에 전달한 종료 상태 출력 */
       printf ("%s: exit(%d)\n", cur->name, cur->exit_status);
     }
     
+  /* 파일 시스템 락을 잡고 실행 파일 및 열린 파일들 정리 */
+  lock_acquire (&filesys_lock);
+
   if (cur->bin_file != NULL) //현재 실행중인 파일 존재 확인
     {
-      lock_acquire (&filesys_lock);
       file_close (cur->bin_file); //파일 닫기
-      lock_release (&filesys_lock);
       cur->bin_file = NULL; //실행 포인터 해지
     }
 
-  /* 부모에게 종료 알림 [cite: 16, 19] */
+  /* 열린 파일 디스크립터(FDT) 정리 */
+  if (cur->fd_table != NULL) 
+    {
+      /* 0, 1은 예약, 2부터 128까지 순회 */
+      for (int i = 2; i < 128; i++) 
+        {
+          if (cur->fd_table[i] != NULL)
+            {
+               file_close (cur->fd_table[i]);
+               cur->fd_table[i] = NULL;
+            }
+        }
+    }
+
+  lock_release (&filesys_lock);
+
+  /*  FDT 메모리 해제 (락 밖에서 수행해도 안전) */
+  if (cur->fd_table != NULL)
+    {
+      palloc_free_page (cur->fd_table);
+      cur->fd_table = NULL;
+    }
+
+  /* 부모에게 종료 알림 */
   if (cur->cp != NULL) //부모와 공유하는 메타데이터의 여부 확인
     {
       cur->cp->exit_status = cur->exit_status; //자신의 종료상태 저장->부모가 알 수 있도록
       cur->cp->exited = true; //종료상태 표시
       sema_up (&cur->cp->wait_sema); //부모 깨우기
       
-      /* 자신의 메타데이터 참조 해제 [cite: 28, 29] */
+      /* 자신의 메타데이터 참조 해제 */
       cur->cp->ref_cnt--; //참조횟수 감소
       if (cur->cp->ref_cnt == 0)
         free (cur->cp); //동적 메모리에 할당된 cp해제
       cur->cp = NULL; //cp초기화
     }
 
-  /* 내가 생성한 자식들 정리 (부모의 책임) [cite: 27, 28] */
+  /* 내가 생성한 자식들 정리 (부모의 책임) */
   while (!list_empty (&cur->children))
     {
       struct list_elem *e = list_pop_front (&cur->children); //자식리스트 하나씩 꺼내기
@@ -301,7 +335,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
   file = filesys_open (prog_name);                         //실행 파일 찾아서 열기
   if (file == NULL) goto done;                           
 
-  /* 실행 파일 쓰기 금지 설정 [cite: 81, 84] */
+  /* 실행 파일 쓰기 금지 설정 */
   file_deny_write (file);
 
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr     //정상적인 ELF 실행 파일인지 형식 검사
@@ -349,7 +383,7 @@ done:
   return success;
 }
 
-/* 스택에 인자 패싱 [cite: 179, 180, 187] */
+/* 스택에 인자 패싱 */
 static bool
 push_arguments (void **esp, const char *cmdline)
 {
@@ -370,7 +404,7 @@ push_arguments (void **esp, const char *cmdline)
     }
   if (argc == 0) { palloc_free_page (copy); return false; }
 
-  /* 1. 인자 문자열 push (오른쪽에서 왼쪽) [cite: 179] */
+  /* 1. 인자 문자열 push (오른쪽에서 왼쪽) */
   char *arg_addrs[64];
   for (int i = argc - 1; i >= 0; i--)
     {
@@ -380,7 +414,7 @@ push_arguments (void **esp, const char *cmdline)
       arg_addrs[i] = *esp;
     }
 
-  /* 2. 4바이트 단위 정렬 [cite: 180, 187] */
+  /* 2. 4바이트 단위 정렬 */
   uintptr_t sp_val = (uintptr_t)*esp;
   if (sp_val % 4 != 0)
     {
@@ -393,14 +427,14 @@ push_arguments (void **esp, const char *cmdline)
   *esp -= sizeof (char *);
   *(char **)*esp = NULL;
 
-  /* 4. argv[i]들의 실제 주소 push [cite: 182, 183] */
+  /* 4. argv[i]들의 실제 주소 push */
   for (int i = argc - 1; i >= 0; i--)
     {
       *esp -= sizeof (char *);
       *(char **)*esp = arg_addrs[i];
     }
 
-  /* 5. argv(첫 번째 인자 주소), argc, return address push [cite: 181, 182] */
+  /* 5. argv(첫 번째 인자 주소), argc, return address push */
   char **argv_start = (char **)*esp;
   *esp -= sizeof (char **);
   *(char ***)*esp = argv_start;
@@ -429,7 +463,7 @@ static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
               uint32_t read_bytes, uint32_t zero_bytes, bool writable) {
   file_seek (file, ofs);   //세그먼트 시작점으로 이동
   //읽을 데이터나 0으로 채울 공간이 남아있는 동안 반복
-  while (read_bytes > 0 || zero_bytes > 0) {                               
+  while (read_bytes > 0 || zero_bytes > 0) {                              
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;  //읽을 바이트 수 결정
       size_t page_zero_bytes = PGSIZE - page_read_bytes;   //남은 바이트 0으로 채우도록 계산
       uint8_t *kpage = palloc_get_page (PAL_USER);    //물리 메모리페이지 할당
