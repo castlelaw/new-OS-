@@ -126,16 +126,15 @@ thread_create (const char *name, int priority,
 
   init_thread (t, name, priority);
 
+  /* [수정] 파일 디스크립터 테이블 할당 */
+  /* init_thread 이후에 실행되어야 memset에 의해 지워지지 않음 */
 #ifdef USERPROG
-  /* 파일 디스크립터 테이블 메모리 할당 
-     PAL_ZERO를 사용해 모든 포인터를 NULL로 초기화합니다.
-     이 과정이 없으면 read-normal 테스트에서 쓰레기 값을 참조
-  */
-  t->fd_table = palloc_get_page(PAL_ZERO); 
-  if (t->fd_table == NULL) {
-    palloc_free_page(t); // fd_table 할당 실패 시 스레드 메모리도 반납
-    return TID_ERROR;
-  }
+  t->fd_table = palloc_get_page (PAL_ZERO); 
+  if (t->fd_table == NULL) 
+    {
+      palloc_free_page (t);
+      return TID_ERROR;
+    }
 #endif
 
   tid = t->tid = allocate_tid ();
@@ -340,16 +339,14 @@ init_thread (struct thread *t, const char *name, int priority)
   t->magic = THREAD_MAGIC;
 
 #ifdef USERPROG
-  t->exit_status = -1;  // 기본 종료 상태는 에러(-1)
+  t->exit_status = 0; /* 초기값을 0으로, 에러 시 -1로 변경 */
   t->load_success = false;
   t->bin_file = NULL;
   
-  /* 자식 리스트 초기화 */
   list_init (&t->children);
   t->cp = NULL;
-
-  /* 파일 디스크립터 테이블은 일단 NULL로 초기화 */
-  /* 실제 메모리 할당은 thread_create에서 수행됨 */
+  
+  /* 여기서는 NULL로 초기화하고, thread_create에서 메모리를 할당합니다. */
   t->fd_table = NULL; 
 #endif
 
