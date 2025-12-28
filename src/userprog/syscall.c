@@ -60,7 +60,6 @@ check_user_vaddr (const void *uaddr)
 
 /* 버퍼 전체 영역 검사 (페이지 경계 포함) */
 static void
-static void
 check_user_buffer (const void *buffer, unsigned size)
 {
   if (size == 0) return;
@@ -207,12 +206,12 @@ syscall_handler (struct intr_frame *f)
         {
           f->eax = -1;    //오류
           break;
-    }
+        }
 
-  lock_acquire (&filesys_lock);
-  f->eax = (int) file_write (file, buf, size);
-  lock_release (&filesys_lock);
-  break;
+        lock_acquire (&filesys_lock);
+        f->eax = (int) file_write (file, buf, size);
+        lock_release (&filesys_lock);
+        break;
       }
 
     case SYS_EXEC:
@@ -266,7 +265,11 @@ syscall_handler (struct intr_frame *f)
         struct file *file = filesys_open (file_name); 
         lock_release (&filesys_lock);
         if (file == NULL) f->eax = -1;  //실패
-        else f->eax = add_file_to_fdt (file); //성공 fd번호 반환
+        else {
+           int fd = add_file_to_fdt (file); //성공 fd번호 반환
+           if (fd == -1) file_close(file);
+           f->eax = fd;
+        }
         break;
       }
 
@@ -301,6 +304,32 @@ syscall_handler (struct intr_frame *f)
           lock_acquire (&filesys_lock);
           f->eax = file_length (file); //파일의 실제 길이를 반환값으로 설정
           lock_release (&filesys_lock);
+        }
+        break;
+      }
+
+    case SYS_SEEK:
+      {
+        int fd = get_user_i32 ((uint8_t *) f->esp + 4);
+        unsigned position = (unsigned) get_user_i32 ((uint8_t *) f->esp + 8);
+        struct file *file = get_file_from_fdt (fd);
+        if (file != NULL) {
+            lock_acquire (&filesys_lock);
+            file_seek (file, position);
+            lock_release (&filesys_lock);
+        }
+        break;
+      }
+
+    case SYS_TELL:
+      {
+        int fd = get_user_i32 ((uint8_t *) f->esp + 4);
+        struct file *file = get_file_from_fdt (fd);
+        if (file == NULL) f->eax = -1;
+        else {
+            lock_acquire (&filesys_lock);
+            f->eax = file_tell (file);
+            lock_release (&filesys_lock);
         }
         break;
       }
