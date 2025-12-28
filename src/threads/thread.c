@@ -125,17 +125,19 @@ thread_create (const char *name, int priority,
     return TID_ERROR;
 
   init_thread (t, name, priority);
+
 #ifdef USERPROG
-  /* PAL_ZERO를 사용하여 메모리를 0으로 초기화 
-     -> 모든 fd 칸이 NULL이 됨 (쓰레기 값 방지) 
+  /* 파일 디스크립터 테이블 메모리 할당 
+     PAL_ZERO를 사용해 모든 포인터를 NULL로 초기화합니다.
+     이 과정이 없으면 read-normal 테스트에서 쓰레기 값을 참조
   */
   t->fd_table = palloc_get_page(PAL_ZERO); 
-  
   if (t->fd_table == NULL) {
-    palloc_free_page(t); // 스레드 메모리도 반납
+    palloc_free_page(t); // fd_table 할당 실패 시 스레드 메모리도 반납
     return TID_ERROR;
   }
 #endif
+
   tid = t->tid = allocate_tid ();
 
   kf = alloc_frame (t, sizeof *kf);
@@ -338,17 +340,17 @@ init_thread (struct thread *t, const char *name, int priority)
   t->magic = THREAD_MAGIC;
 
 #ifdef USERPROG
-  t->exit_status = -1;
+  t->exit_status = -1;  // 기본 종료 상태는 에러(-1)
   t->load_success = false;
   t->bin_file = NULL;
   
-  /*  자식 리스트 초기화 */
+  /* 자식 리스트 초기화 */
   list_init (&t->children);
   t->cp = NULL;
 
-  /*  파일 디스크립터 테이블 포인터 초기화 */
-  /* 실제 할당은 process.c/start_process에서 palloc으로 수행됨 */
-  t->fd_table = NULL;
+  /* 파일 디스크립터 테이블은 일단 NULL로 초기화 */
+  /* 실제 메모리 할당은 thread_create에서 수행됨 */
+  t->fd_table = NULL; 
 #endif
 
   old_level = intr_disable ();
