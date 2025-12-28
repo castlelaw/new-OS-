@@ -27,6 +27,11 @@ static bool load (const char *cmdline, void (**eip) (void), void **esp);
 static bool push_arguments (void **esp, const char *cmdline);
 static bool install_page (void *upage, void *kpage, bool writable);
 
+static bool setup_stack (void **esp);
+static bool validate_segment (const struct Elf32_Phdr *phdr, struct file *file);
+static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
+                          uint32_t read_bytes, uint32_t zero_bytes, bool writable);
+
 /* 프로세스 실행 간 동기화를 위한 구조체 */
 struct exec_info {
   char *cmdline;              //시스템 콜에 전달된 전체 명령행 문자열을 자식 스레드에 전달하기 위해 저장
