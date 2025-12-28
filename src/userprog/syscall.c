@@ -150,9 +150,8 @@ void
 exit (int status)
 {
   struct thread *cur = thread_current ();
-  /* [FIX] cur->exited 제거됨 */
   cur->exit_status = status; //스레드 구조체 안에 종료 코드를 저장
-  printf("%s: exit(%d)\n", cur->name, status); //이름 종료코드 출력
+  
   thread_exit ();
 }
 
