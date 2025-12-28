@@ -431,7 +431,7 @@ static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
   //읽을 데이터나 0으로 채울 공간이 남아있는 동안 반복
   while (read_bytes > 0 || zero_bytes > 0) {                               
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;  //읽을 바이트 수 결정
-      size_t page_zero_bytes = PGSIZE - page_read_bytes;   //남은 바이트 0으로 채움
+      size_t page_zero_bytes = PGSIZE - page_read_bytes;   //남은 바이트 0으로 채우도록 계산
       uint8_t *kpage = palloc_get_page (PAL_USER);    //물리 메모리페이지 할당
       if (kpage == NULL) return false;              //메모리 할당 실패
     //데이터를 읽고 할당된 메모리에 씀
