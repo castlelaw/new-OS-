@@ -282,51 +282,51 @@ bool
 load (const char *file_name, void (**eip) (void), void **esp)
 {
   struct thread *t = thread_current ();
-  struct Elf32_Ehdr ehdr;
-  struct file *file = NULL;
-  off_t file_ofs;
-  bool success = false;
+  struct Elf32_Ehdr ehdr;                     //ELF 실행 파일의 헤더 정보를 담을 구조체
+  struct file *file = NULL;                   //포인터 초기화
+  off_t file_ofs;                             //파일 내에서 읽을 위치를 저장하는 변수
+  bool success = false; 
   int i;
 
-  t->pagedir = pagedir_create ();
-  if (t->pagedir == NULL) goto done;
-  process_activate ();
+  t->pagedir = pagedir_create ();             //페이지 디렉토리 생성
+  if (t->pagedir == NULL) goto done; 
+  process_activate ();                         //cpu에 활성화 적용
 
   /* 파일명만 따로 분리하여 열기 */
-  char fn_copy[128];
-  strlcpy (fn_copy, file_name, sizeof fn_copy);
-  char *save_ptr;
-  char *prog_name = strtok_r (fn_copy, " ", &save_ptr);
+  char fn_copy[128]; 
+  strlcpy (fn_copy, file_name, sizeof fn_copy);         //명령행 문자열 전체 복사
+  char *save_ptr; //분리상태 유지 
+  char *prog_name = strtok_r (fn_copy, " ", &save_ptr);     //실제 파일이름만 추출
 
-  file = filesys_open (prog_name);
-  if (file == NULL) goto done;
+  file = filesys_open (prog_name);                         //실행 파일 찾아서 열기
+  if (file == NULL) goto done;                           
 
   /* 실행 파일 쓰기 금지 설정 [cite: 81, 84] */
   file_deny_write (file);
 
-  if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
+  if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr     //정상적인 ELF 실행 파일인지 형식 검사
       || memcmp (ehdr.e_ident, "\177ELF\1\1\1", 7)
       || ehdr.e_type != 2)
     goto done;
 
-  file_ofs = ehdr.e_phoff;
+  file_ofs = ehdr.e_phoff;   //실제 프로그램 내용이 시작되는 위치 정보
   for (i = 0; i < ehdr.e_phnum; i++)
     {
       struct Elf32_Phdr phdr;
-      file_seek (file, file_ofs);
-      if (file_read (file, &phdr, sizeof phdr) != sizeof phdr) goto done;
-      file_ofs += sizeof phdr;
+      file_seek (file, file_ofs);    //현재 읽을 세그먼트 정보의 위치로 이동
+      if (file_read (file, &phdr, sizeof phdr) != sizeof phdr) goto done;    //세그먼트 상세정보를 읽음
+      file_ofs += sizeof phdr;    
 
-      if (phdr.p_type == PT_LOAD)
+      if (phdr.p_type == PT_LOAD)     
         {
-          if (validate_segment (&phdr, file))
+          if (validate_segment (&phdr, file))     //세그먼트의 주소나 크기가 유효한지 검증
             {
-              bool writable = (phdr.p_flags & PF_W) != 0;
-              uint32_t file_page = phdr.p_offset & ~PGMASK;
-              uint32_t mem_page = phdr.p_vaddr & ~PGMASK;
-              uint32_t page_offset = phdr.p_vaddr & PGMASK;
-              uint32_t read_bytes, zero_bytes;
-              if (phdr.p_filesz > 0) {
+              bool writable = (phdr.p_flags & PF_W) != 0;     //메모리에 쓰기 가능한지
+              uint32_t file_page = phdr.p_offset & ~PGMASK;    //페이지 시작위치 계산
+              uint32_t mem_page = phdr.p_vaddr & ~PGMASK;       //가상 메모리 페이지 주소 계산
+              uint32_t page_offset = phdr.p_vaddr & PGMASK;    //오프셋 계산
+              uint32_t read_bytes, zero_bytes;                 //파일을 실제 읽을 크기, 0으로 채울 크기 계산
+              if (phdr.p_filesz > 0) { 
                   read_bytes = page_offset + phdr.p_filesz;
                   zero_bytes = (ROUND_UP (page_offset + phdr.p_memsz, PGSIZE) - read_bytes);
               } else {
