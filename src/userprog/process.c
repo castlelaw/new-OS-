@@ -415,47 +415,53 @@ push_arguments (void **esp, const char *cmdline)
   return true;
 }
 
+
+//세그먼트 유효성 검사
 static bool validate_segment (const struct Elf32_Phdr *phdr, struct file *file) {
-  if ((phdr->p_offset & PGMASK) != (phdr->p_vaddr & PGMASK)) return false;
-  if (phdr->p_offset > (Elf32_Off) file_length (file)) return false;
-  if (phdr->p_memsz < phdr->p_filesz) return false;
-  if (!is_user_vaddr ((void *) phdr->p_vaddr)) return false;
+  if ((phdr->p_offset & PGMASK) != (phdr->p_vaddr & PGMASK)) return false; //파일의 오프셋과 가상주소의 오프셋 정렬확인
+  if (phdr->p_offset > (Elf32_Off) file_length (file)) return false;    //시작 위치 확인
+  if (phdr->p_memsz < phdr->p_filesz) return false;                     //메모리 할당량은 파일 데이터 크기보다 크거나 같아야함
+  if (!is_user_vaddr ((void *) phdr->p_vaddr)) return false;            //사용자 영역에 해당하는 지
   return true;
 }
 
-static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
+static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,          
               uint32_t read_bytes, uint32_t zero_bytes, bool writable) {
-  file_seek (file, ofs);
-  while (read_bytes > 0 || zero_bytes > 0) {
-      size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
-      size_t page_zero_bytes = PGSIZE - page_read_bytes;
-      uint8_t *kpage = palloc_get_page (PAL_USER);
-      if (kpage == NULL) return false;
+  file_seek (file, ofs);   //세그먼트 시작점으로 이동
+  //읽을 데이터나 0으로 채울 공간이 남아있는 동안 반복
+  while (read_bytes > 0 || zero_bytes > 0) {                               
+      size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;  //읽을 바이트 수 결정
+      size_t page_zero_bytes = PGSIZE - page_read_bytes;   //남은 바이트 0으로 채움
+      uint8_t *kpage = palloc_get_page (PAL_USER);    //물리 메모리페이지 할당
+      if (kpage == NULL) return false;              //메모리 할당 실패
+    //데이터를 읽고 할당된 메모리에 씀
       if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes) {
           palloc_free_page (kpage); return false;
       }
-      memset (kpage + page_read_bytes, 0, page_zero_bytes);
+      memset (kpage + page_read_bytes, 0, page_zero_bytes);    //남은공간 0으로 채움
       if (!install_page (upage, kpage, writable)) {
           palloc_free_page (kpage); return false;
-      }
-      read_bytes -= page_read_bytes; zero_bytes -= page_zero_bytes; upage += PGSIZE;
+      }   //물리 페이지를 가상주소에 연결
+      read_bytes -= page_read_bytes; zero_bytes -= page_zero_bytes; upage += PGSIZE; //남은 양 계산하고 다음 가상페이지 이동 
   }
   return true;
 }
 
 static bool setup_stack (void **esp) {
-  uint8_t *kpage = palloc_get_page (PAL_USER | PAL_ZERO);
+  uint8_t *kpage = palloc_get_page (PAL_USER | PAL_ZERO);    //물리페이지를 할당받고 초기화
+  
+  //할당받은 페이지와 가상메모리 연결
   if (kpage != NULL) {
       if (install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true)) {
-          *esp = PHYS_BASE; return true;
+          *esp = PHYS_BASE; return true;  //esp초기화
       }
-      palloc_free_page (kpage);
+      palloc_free_page (kpage);  //페이지 반환
   }
   return false;
 }
 
 static bool install_page (void *upage, void *kpage, bool writable) {
   struct thread *t = thread_current ();
-  return (pagedir_get_page (t->pagedir, upage) == NULL
-          && pagedir_set_page (t->pagedir, upage, kpage, writable));
+  return (pagedir_get_page (t->pagedir, upage) == NULL   //할당받은 페이지가 있는지 확인
+          && pagedir_set_page (t->pagedir, upage, kpage, writable));  //가상주소와 물리주소를 매핑
 }
